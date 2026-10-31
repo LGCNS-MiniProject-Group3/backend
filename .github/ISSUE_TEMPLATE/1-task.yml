@@ -1,0 +1,59 @@
+name: 작업
+description: 기능 이전·추가, 설정 작업
+title: "[서비스] "
+labels: ["type:feat"]
+body:
+  - type: dropdown
+    id: service
+    attributes:
+      label: 서비스
+      multiple: true
+      options:
+        - gateway
+        - discovery
+        - config
+        - common
+        - kafka
+        - user
+        - content
+        - collector
+        - guide
+        - bookmark
+        - infra
+        - ci
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: 무엇을 하나요
+      placeholder: 예) Gateway에서 JWT를 검사하고 X-User-Id, X-User-Role 헤더를 붙여 넘긴다
+    validations:
+      required: true
+  - type: textarea
+    id: tasks
+    attributes:
+      label: 할 일
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 기준
+      placeholder: 예) 토큰 없이 /api/profile 호출하면 401, 정상 토큰이면 user 서비스에 X-User-Id가 도착한다
+    validations:
+      required: true
+  - type: input
+    id: origin
+    attributes:
+      label: 원래 코드
+      description: 원본 저장소(LGCNS-AM06-8/mini8-backend)의 경로. 표기 방법은 docs/README.md
+      placeholder: 예) commons/filter/JwtAuthenticationFilter.java
+  - type: input
+    id: depends
+    attributes:
+      label: 함께 맞출 사람 · 선행 이슈
+      placeholder: 예) 3번(content) 내부 API stub 필요, #7

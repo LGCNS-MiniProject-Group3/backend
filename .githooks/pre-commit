@@ -1,0 +1,16 @@
+#!/bin/sh
+# 커밋 직전에 코드 모양을 검사한다. 어긋나면 커밋을 막는다.
+# 고치기: ./gradlew spotlessApply
+
+if [ ! -f ./gradlew ]; then
+  exit 0
+fi
+
+./gradlew spotlessCheck -q
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "  코드 모양이 팀 규칙과 다릅니다."
+  echo "  ./gradlew spotlessApply 를 실행해 고친 뒤 다시 커밋하세요."
+  echo ""
+  exit 1
+fi

@@ -1,0 +1,30 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+.DS_Store
+
+# 비밀 값
+.env
+.env.*
+!.env.example
+*.pem
+
+# 로그
+logs/
+*.log
+
+# 개인 에이전트 설정 · AI 초안
+CLAUDE.local.md
+.claude/settings.local.json
+.ai-drafts/
+
+# 원본 저장소를 실수로 안에 받은 경우
+/mini8-backend/
+/mini8-frontend/
