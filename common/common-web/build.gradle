@@ -1,3 +1,14 @@
 plugins {
     id 'java-library'
 }
+
+// 서비스가 이미 가진 라이브러리는 compileOnly로 둔다. 버전·포함 여부는 서비스 쪽이 정한다.
+dependencies {
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+    // Feign을 쓰는 서비스에서만 Feign 오류 처리·타임아웃이 켜진다
+    compileOnly 'io.github.openfeign:feign-core'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation 'org.springframework.boot:spring-boot-starter-validation'
+    testImplementation 'io.github.openfeign:feign-core'
+}
