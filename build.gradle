@@ -1,0 +1,87 @@
+// 모든 모듈이 같이 쓰는 빌드 설정. 모듈별 의존성은 각 모듈의 build.gradle에 둔다.
+plugins {
+    id 'org.springframework.boot' version '3.4.5' apply false
+    id 'io.spring.dependency-management' version '1.1.7' apply false
+    id 'com.diffplug.spotless' version '6.25.0' apply false
+}
+
+ext {
+    springCloudVersion = '2024.0.1'   // Spring Boot 3.4.x 짝
+}
+
+allprojects {
+    group = 'com.recu'
+    version = '0.0.1-SNAPSHOT'
+
+    repositories {
+        mavenCentral()
+    }
+}
+
+// ':common'은 폴더만 묶는 자리라 소스가 없다. 그 아래 모듈과 서비스에만 적용한다.
+configure(subprojects.findAll { it.path != ':common' }) {
+    apply plugin: 'java'
+    apply plugin: 'io.spring.dependency-management'
+    apply plugin: 'com.diffplug.spotless'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(17)
+        }
+    }
+
+    dependencyManagement {
+        imports {
+            mavenBom "org.springframework.boot:spring-boot-dependencies:3.4.5"
+            mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+        }
+    }
+
+    configurations {
+        compileOnly {
+            extendsFrom annotationProcessor
+        }
+    }
+
+    dependencies {
+        compileOnly 'org.projectlombok:lombok'
+        annotationProcessor 'org.projectlombok:lombok'
+
+        testImplementation 'org.springframework.boot:spring-boot-starter-test'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+
+    // 코드 모양을 구글 표준으로 맞춘다 (원본 설정 유지).
+    //   ./gradlew spotlessApply   고치기
+    //   ./gradlew spotlessCheck   검사만 (pre-commit 훅이 부른다)
+    spotless {
+        java {
+            target 'src/**/*.java'
+            googleJavaFormat('1.17.0')
+            removeUnusedImports()
+            trimTrailingWhitespace()
+            endWithNewline()
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'   // Windows 기본이 MS949라 한글 문자열 깨짐 방지
+    }
+
+    // 실행·테스트 때도 UTF-8로 읽는다 (원본에서 Windows 한글 경로가 깨진 문제)
+    tasks.withType(JavaExec).configureEach {
+        jvmArgs '-Dfile.encoding=UTF-8', '-Dsun.stdout.encoding=UTF-8', '-Dsun.stderr.encoding=UTF-8'
+    }
+
+    tasks.withType(Test).configureEach {
+        jvmArgs '-Dfile.encoding=UTF-8', '-Dsun.stdout.encoding=UTF-8', '-Dsun.stderr.encoding=UTF-8'
+        // 실제 외부 사이트·API에 요청하는 테스트는 평소에 건너뛴다.
+        //   ./gradlew test            기본
+        //   ./gradlew test -Pnetwork  외부 요청 테스트까지
+        useJUnitPlatform {
+            if (!project.hasProperty('network')) {
+                excludeTags 'network'
+            }
+        }
+    }
+}

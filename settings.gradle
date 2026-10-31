@@ -1,0 +1,13 @@
+plugins {
+    // 로컬에 JDK 17이 없으면 Gradle이 받아 온다 (toolchain 17 고정)
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
+}
+
+rootProject.name = 'recu'
+
+// 인프라 서버
+include 'gateway', 'discovery', 'config'
+// 업무 서비스
+include 'user', 'content', 'collector', 'guide', 'bookmark'
+// 공통 모듈: web(1번), kafka(6번)
+include 'common:common-web', 'common:common-kafka'
