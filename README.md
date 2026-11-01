@@ -9,6 +9,20 @@ LG CNS AM Inspire 6기, mini Project 2, 3조 Backend Github Repo입니다.
 ```bash
 git config core.hooksPath .githooks
 ```
+
+
+
+LG CNS AM Inspire 6기, mini Project 2, 3조 Backend Github Repo입니다.
+
+## 문서
+
+설계, 역할 분담, 협업 규칙, 코드 규칙, AI 사용 규칙은 모두 [docs/](docs/README.md)에 있어요.
+
+## 처음 한 번
+
+```bash
+git config core.hooksPath .githooks
+```
        |
 ## rerecu v0
 
@@ -19,7 +33,7 @@ git config core.hooksPath .githooks
 최상위 Gradle에서 공통 빌드 환경과 버전을 관리하고, 각 마이크로서비스는 개별 `build.gradle`을 통해 필요한 의존성과 기능을 관리한다.
 
 
-폴더 구조는 msa-toy 에 맞춰서 해주세요 
+폴더 구조는 msa-toy 에 맞춰서 해주세요
 
 ### 1.1 Gradle 관리 구조
 
