@@ -3,6 +3,7 @@ plugins {
 }
 
 dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-web'
+    // 웹 서버가 함께 들어온다. 설정 저장소(git)를 읽어 서비스에 설정을 내려준다
+    implementation 'org.springframework.cloud:spring-cloud-config-server'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 }

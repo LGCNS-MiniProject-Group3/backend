@@ -1,0 +1,7 @@
+# 테스트에서는 Config Server에 접속하지 않는다.
+# application-test.yml(프로필 파일)에 두면 Config 접속을 정하는 시점보다 늦게 읽혀서,
+# 프로필과 상관없이 항상 읽히는 이 위치(classpath:/config/)에 둔다
+spring:
+  cloud:
+    config:
+      enabled: false

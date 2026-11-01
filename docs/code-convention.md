@@ -169,7 +169,8 @@ public interface UserClient {
 
 ## 설정
 
-- 각 서비스의 `application.yml`에는 `spring.application.name`과 Config Server 주소만 둬요. 나머지는 private 설정 저장소의 `<모듈>.yml`에 둬요([design.md 9장](design.md#config-설정-저장소)).
+- 각 서비스의 `application.yml`에는 `spring.application.name`, 포트, Config Server 주소만 둬요. 나머지는 private 설정 저장소의 `<모듈>.yml`에 둬요([design.md 9장](design.md#config-설정-저장소)).
+- 테스트는 Config Server 없이 돌아요. `src/test/resources/config/application.yml`의 `spring.cloud.config.enabled: false` 때문이에요. 이 설정은 프로필 파일(`application-test.yml`)에 두면 적용되지 않아요.
 - 프로필은 `local`(IDE에서 서비스 실행), `dev`(compose로 전체 스택), `prod`(EC2) 세 개예요.
 - 설정 변경을 바로 다시 읽어야 하는 빈에만 `@RefreshScope`를 달아요. 갱신은 Spring Cloud Bus(`/actuator/busrefresh`)로 해요.
 - 비밀 값은 설정 저장소에 `{cipher}`로만 넣어요. 코드와 이 저장소의 설정 파일에는 비밀 값을 쓰지 않아요.
