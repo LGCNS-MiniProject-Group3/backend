@@ -1,0 +1,35 @@
+#!/bin/sh
+# push 직전에 검사한다. 규칙: docs/CONTRIBUTING.md
+#   1. main · develop 으로 직접 push 하지 않는다
+#   2. 브랜치 이름은 <타입>/<이슈번호>-<서비스>-<짧은-설명>
+
+pattern='^(feat|fix|refactor|test|docs|style|chore|ci)/[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$'
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  branch=${remote_ref#refs/heads/}
+
+  case "$branch" in
+    main|develop)
+      echo ""
+      echo "  $branch 에는 직접 push 하지 않습니다. 작업 브랜치에서 PR을 보내 주세요."
+      echo ""
+      exit 1
+      ;;
+  esac
+
+  case "$remote_ref" in
+    refs/heads/*) ;;
+    *) continue ;;
+  esac
+
+  if ! echo "$branch" | grep -Eq "$pattern"; then
+    echo ""
+    echo "  브랜치 이름 형식이 맞지 않습니다: $branch"
+    echo "  형식 : <타입>/<이슈번호>-<서비스>-<짧은-설명>"
+    echo "  예   : feat/12-gateway-jwt-filter"
+    echo ""
+    exit 1
+  fi
+done
+
+exit 0
