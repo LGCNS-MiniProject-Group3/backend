@@ -4,3 +4,12 @@ spring:
 
 server:
   port: 8761
+
+eureka:
+  client:
+    # 서버 자신은 등록하지 않고, 다른 서버에서 목록을 받아 오지도 않는다 (Eureka 1대)
+    register-with-eureka: false
+    fetch-registry: false
+  server:
+    # 개발 중에는 서비스를 자주 껐다 켠다. 꺼진 서비스가 목록에 오래 남지 않게 자기 보호 모드를 끈다
+    enable-self-preservation: false
