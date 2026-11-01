@@ -2,6 +2,7 @@ package com.recu.content.features.post.service;
 
 import com.recu.common.web.error.BusinessException;
 import com.recu.common.web.error.CommonErrorCode;
+import com.recu.content.client.ContentBookmarkLookup;
 import com.recu.content.database.entity.BlogPostEntity;
 import com.recu.content.database.entity.BlogPostSectionEntity;
 import com.recu.content.features.post.domain.dto.PostResponseDTO;
@@ -30,6 +31,7 @@ public class PostService {
 
   private final PostRepository postRepository;
   private final PostSectionRepository sectionRepository;
+  private final ContentBookmarkLookup bookmarkLookup;
 
   @Transactional(readOnly = true)
   public PostResponseDTO getPost(Long id, Long userId) {
@@ -80,7 +82,9 @@ public class PostService {
         post.getUrl(),
         resolveContentUrls(contentHtml, post.getUrl()),
         sections,
-        isBookmarked(userId, post.getBlog_post_id()));
+        bookmarkLookup
+            .get(userId, List.of(post.getBlog_post_id()))
+            .contains(post.getBlog_post_id()));
   }
 
   private String resolveContentUrls(String contentHtml, String baseUrl) {
@@ -141,11 +145,5 @@ public class PostService {
       }
     }
     return body.html();
-  }
-
-  // TODO(②): 저장 여부는 bookmark의 ②(POST /internal/bookmarks/lookup)로 묻고, 실패하면 false로 채운다.
-  //  원본: postRepository.countBookmarkByUserIdAndPostId(userId, postId) > 0 (bookmark 표 직접 조회)
-  private boolean isBookmarked(Long userId, Long postId) {
-    return false;
   }
 }

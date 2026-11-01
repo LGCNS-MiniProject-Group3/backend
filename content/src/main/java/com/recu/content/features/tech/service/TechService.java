@@ -2,6 +2,7 @@ package com.recu.content.features.tech.service;
 
 import com.recu.content.database.entity.TechTagEntity;
 import com.recu.content.database.repository.TechTagRepository;
+import com.recu.content.features.tech.domain.dto.InternalTechResponseDTO;
 import com.recu.content.features.tech.domain.dto.TechResponseDTO;
 import com.recu.content.features.tech.domain.dto.TechResponseDTO.TechTagDTO;
 import java.util.List;
@@ -46,6 +47,19 @@ public class TechService {
           "Flutter");
 
   private final TechTagRepository techTagRepository;
+
+  @Transactional(readOnly = true)
+  public List<InternalTechResponseDTO> getInternalTechTags(List<Long> ids) {
+    var found =
+        techTagRepository.findAllById(ids).stream()
+            .collect(java.util.stream.Collectors.toMap(TechTagEntity::getTech_tag_id, t -> t));
+    return ids.stream()
+        .distinct()
+        .filter(found::containsKey)
+        .map(found::get)
+        .map(t -> new InternalTechResponseDTO(t.getTech_tag_id(), t.getName()))
+        .toList();
+  }
 
   @Transactional(readOnly = true)
   public TechResponseDTO getTechList() {

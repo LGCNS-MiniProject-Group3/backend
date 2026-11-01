@@ -2,6 +2,9 @@ package com.recu.content.features.company.service;
 
 import com.recu.common.web.error.BusinessException;
 import com.recu.common.web.error.CommonErrorCode;
+import com.recu.content.client.ContentBookmarkLookup;
+import com.recu.content.client.ContentUserPreference;
+import com.recu.content.client.dto.UserPreferenceResponseDTO;
 import com.recu.content.database.entity.BlogPostEntity;
 import com.recu.content.database.entity.BlogPostTagEntity;
 import com.recu.content.database.entity.CompanyEntity;
@@ -9,7 +12,9 @@ import com.recu.content.database.entity.TechTagEntity;
 import com.recu.content.database.repository.BlogPostRepository;
 import com.recu.content.database.repository.BlogPostTagRepository;
 import com.recu.content.database.repository.CompanyRepository;
+import com.recu.content.database.repository.UserGuideFlagRepository;
 import com.recu.content.error.ContentErrorCode;
+import com.recu.content.features.company.domain.dto.CollectionCompanyResponseDTO;
 import com.recu.content.features.company.domain.dto.CompanyListResponseDTO;
 import com.recu.content.features.company.domain.dto.CompanyListResponseDTO.CompanyDTO;
 import com.recu.content.features.company.domain.dto.CompanyListResponseDTO.SkillResponseDTO;
@@ -19,7 +24,6 @@ import com.recu.content.features.company.domain.dto.CompanyPostListResponseDTO.P
 import com.recu.content.features.company.domain.dto.CompanyResponseDTO;
 import com.recu.content.features.company.domain.dto.CompanyStatsDTO;
 import com.recu.content.features.company.repository.CompanyPostQueryRepository;
-import jakarta.transaction.Transactional;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -35,6 +39,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -44,10 +49,24 @@ public class CompanyService {
   private final BlogPostRepository blogPostRepository;
   private final BlogPostTagRepository blogPostTagRepository;
   private final CompanyPostQueryRepository companyPostQueryRepository;
+  private final ContentUserPreference userPreference;
+  private final ContentBookmarkLookup bookmarkLookup;
+  private final UserGuideFlagRepository guideFlags;
 
-  @Transactional
+  @Transactional(readOnly = true)
+  public List<CollectionCompanyResponseDTO> getCollectionCompanies() {
+    return companyRepository.findAll().stream()
+        .sorted(Comparator.comparing(CompanyEntity::getCompany_id))
+        .map(
+            c ->
+                new CollectionCompanyResponseDTO(
+                    c.getCompany_id(), c.getName(), c.getFeed_url(), c.getFeed_type()))
+        .toList();
+  }
+
+  @Transactional(readOnly = true)
   public CompanyListResponseDTO getCompanyList(Long userId) {
-    Preference preference = preference(userId);
+    UserPreferenceResponseDTO preference = userPreference.get(userId);
 
     if (preference.profileVersion() == 0) {
       throw new BusinessException(ContentErrorCode.PROFILE_REQUIRED);
@@ -150,7 +169,7 @@ public class CompanyService {
     return CompanyListResponseDTO.builder().companies(companies).build();
   }
 
-  @Transactional
+  @Transactional(readOnly = true)
   public CompanyPostListResponseDTO getCompanyPostList(
       Long companyId, boolean onlyMySkills, Long userId) {
     if (!companyRepository.existsById(companyId)) {
@@ -162,15 +181,15 @@ public class CompanyService {
       return new CompanyPostListResponseDTO(new Filter(onlyMySkills, 0, 0), List.of());
     }
 
-    Preference preference = preference(userId);
+    UserPreferenceResponseDTO preference = userPreference.get(userId);
     List<String> jobFields = preference.jobFields();
     List<String> wantSkills = preference.wantSkillNames();
     List<Long> postIds = posts.stream().map(BlogPostEntity::getBlog_post_id).toList();
 
     Map<Long, List<String>> skills = skills(postIds);
     Map<Long, Long> sectionCounts = sectionCounts(postIds);
-    Set<Long> bookmarkedPostIds = bookmarkedPostIds(userId, postIds);
-    Set<Long> guidedPostIds = guidedPostIds(userId, postIds);
+    Set<Long> bookmarkedPostIds = bookmarkLookup.get(userId, postIds);
+    Set<Long> guidedPostIds = new HashSet<>(guideFlags.findGuidedPostIds(userId, postIds));
 
     List<PostMatch> matches =
         posts.stream()
@@ -221,6 +240,7 @@ public class CompanyService {
         new Filter(onlyMySkills, personalized.size(), posts.size()), result);
   }
 
+  @Transactional(readOnly = true)
   public CompanyResponseDTO getCompanyDetail(Long id) {
 
     Long companyId = id;
@@ -287,21 +307,24 @@ public class CompanyService {
     // 기술 태그 상위 5개 가져오는 코드
 
     List<Map<String, Object>> topSkills =
-        companyPostQueryRepository.findTags(postIds).stream()
-            .map(tag -> tag.getTechTag().getName())
-            .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
-            .entrySet()
+        (postIds.isEmpty()
+                ? List.<BlogPostTagEntity>of()
+                : companyPostQueryRepository.findTags(postIds))
             .stream()
-            .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
-            .limit(5)
-            .map(
-                entry -> {
-                  Map<String, Object> map = new HashMap<>();
-                  map.put("name", entry.getKey());
-                  map.put("count", entry.getValue().intValue());
-                  return map;
-                })
-            .toList();
+                .map(tag -> tag.getTechTag().getName())
+                .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
+                .entrySet()
+                .stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .limit(5)
+                .map(
+                    entry -> {
+                      Map<String, Object> map = new HashMap<>();
+                      map.put("name", entry.getKey());
+                      map.put("count", entry.getValue().intValue());
+                      return map;
+                    })
+                .toList();
 
     CompanyStatsDTO stats =
         CompanyStatsDTO.builder()
@@ -369,29 +392,4 @@ public class CompanyService {
   }
 
   private record PostMatch(Post post, boolean personalized) {}
-
-  // ---- 분리 이식 때 둔 대역. 담당 작업에서 Feign·Kafka로 바꾼다 ----
-
-  /** ① 응답 모양 (docs/design.md 5장): 희망 직무, 관심 기술 이름, 프로필 버전. */
-  record Preference(List<String> jobFields, List<String> wantSkillNames, int profileVersion) {}
-
-  // TODO(①): user의 GET /internal/users/{userId}/preference 로 묻는다.
-  //  원본: userRepository.findById(userId)(없으면 401·404),
-  // userSkillRepository.findAllByUserAndSkillType(user, "WANT"),
-  //  companyPostQueryRepository.findJobFields·findWantSkillNames (user 표 직접 조회)
-  private Preference preference(Long userId) {
-    throw new UnsupportedOperationException("TODO(①): 회원 선호 조회 미구현");
-  }
-
-  // TODO(②): bookmark의 POST /internal/bookmarks/lookup 으로 묻고, 실패하면 빈 집합(저장 안 됨)으로 채운다.
-  //  원본: companyPostQueryRepository.findBookmarkedPostIds (bookmark 표 직접 조회)
-  private Set<Long> bookmarkedPostIds(Long userId, List<Long> postIds) {
-    return Set.of();
-  }
-
-  // TODO(C): content의 user_guide_flag 사본(메시지 C·B 수신)으로 채운다.
-  //  원본: companyPostQueryRepository.findGuidedPostIds (ai_guide 표 직접 조회, 현재 프로필 버전 기준)
-  private Set<Long> guidedPostIds(Long userId, List<Long> postIds) {
-    return Set.of();
-  }
 }
