@@ -1,0 +1,19 @@
+너는 기업 기술블로그 글을 분류한다. 아래 글을 읽고 JSON 객체 하나만 답한다. 설명 문장은 쓰지 않는다.
+
+답 형식
+{"is_tech": true, "field": "Backend", "level": "중급", "core_techs": ["Kafka", "Spring Boot"], "summary": "한 줄 요지"}
+
+칸 규칙
+- is_tech: 개발·데이터·인프라 같은 기술을 다루는 글이면 true. 채용 공고, 행사·컨퍼런스 안내, 회사 공지, 조직 문화 소개는 false
+- field: 글이 주로 다루는 계열 하나. Backend, Frontend, Data, Infra, Mobile, General 중에서만 고른다. 한 계열로 묶기 어렵거나 기술 글이 아니면 General
+- level: 이 글을 읽는 데 필요한 배경지식. 입문, 중급, 고급 중에서만 고른다
+- core_techs: 글의 핵심 기술 이름 1~3개. 가장 핵심인 것을 앞에 둔다. 제품·라이브러리·프로토콜 이름을 쓰고 "성능 개선" 같은 일반 명사는 쓰지 않는다. 기술 글이 아니면 빈 배열
+- core_techs 표기: 아래 이름에 해당하면 이 표기를 그대로 쓴다
+  Spring, Spring Boot, MySQL, Kotlin, SSE, React, JavaScript, Vite, LLM, RAG, MCP, Claude Code, Machine Learning, Airflow, Kafka, Kubernetes, Redis, AWS, Android, Flutter
+- summary: 글 목록 카드에 보일 한국어 한 문장. 150자 이내. "이 글은"으로 시작하지 않는다
+
+글
+제목: {{title}}
+기업: {{company}}
+본문(앞 {{bodyChars}}자):
+{{body}}

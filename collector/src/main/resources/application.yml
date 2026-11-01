@@ -13,3 +13,15 @@ eureka:
   instance:
     # 컨테이너 안에서는 호스트 이름 대신 IP로 등록해야 다른 컨테이너가 찾아온다
     prefer-ip-address: true
+
+gemini:
+  api-key: ${GEMINI_API_KEY}
+
+collect:
+  # 파일 적재(/import)가 읽는 폴더 (원본과 같음)
+  data-dir: ${COLLECT_DATA_DIR:}
+  # AI 1차 분류 조건. 새 글을 분류할 때도 같아야 결과가 어긋나지 않는다 (원본 값)
+  classify:
+    model: gemini-3.5-flash-lite
+    body-chars: 7000
+    temperature: 0

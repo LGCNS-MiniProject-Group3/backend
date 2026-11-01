@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"
+	xmlns:content="http://purl.org/rss/1.0/modules/content/"
+	xmlns:wfw="http://wellformedweb.org/CommentAPI/"
+	xmlns:dc="http://purl.org/dc/elements/1.1/"
+	xmlns:atom="http://www.w3.org/2005/Atom"
+	xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
+	xmlns:slash="http://purl.org/rss/1.0/modules/slash/"
+	>
+
+<channel>
+	<title>우아한형제들 기술블로그</title>
+	<atom:link href="https://techblog.woowahan.com/feed/" rel="self" type="application/rss+xml" />
+	<link>https://techblog.woowahan.com</link>
+	<description>배달의민족을 만드는 기술 이야기</description>
+	<lastBuildDate>Thu, 17 Sep 2026 11:47:15 +0000</lastBuildDate>
+	<language>ko-KR</language>
+	<sy:updatePeriod>
+	hourly	</sy:updatePeriod>
+	<sy:updateFrequency>
+	1	</sy:updateFrequency>
+	
+
+<image>
+	<url>https://techblog.woowahan.com/wp-content/uploads/2020/08/favicon.ico</url>
+	<title>우아한형제들 기술블로그</title>
+	<link>https://techblog.woowahan.com</link>
+	<width>32</width>
+	<height>32</height>
+</image> 
+	<item>
+		<title>배달의민족 전자계약서 화면 개편기: AI에게 맡긴 것과 사람이 챙긴 것</title>
+		<link>https://techblog.woowahan.com/27604/</link>
+					<comments>https://techblog.woowahan.com/27604/#respond</comments>
+		
+		<dc:creator><![CDATA[이형준]]></dc:creator>
+		<pubDate>Fri, 18 Sep 2026 06:10:50 +0000</pubDate>
+				<category><![CDATA[AI]]></category>
+		<category><![CDATA[Frontend]]></category>
+		<guid isPermaLink="false">https://techblog.woowa.in/?p=27604</guid>
+
+					<description><![CDATA[<p>들어가며 전자계약서는 파트너(사장님)가 배달의민족을 처음 시작할 때 작성하는 전자문서입니다. 영업 담당자가 파트너와 함께 작성하고, 계약 내용을 바꿀 때도 같은 문서를 씁니다. 이 문서를 쓰는 작성 화면은 사업자 정보, 가게 정보, 광고 정보 같은 섹션이 모여 계약서 한 장을 이루는 큰 폼입니다. 2026년 4월부터 6월까지 이 작성 화면을 개편했습니다. 작성자가 계약서를 더 편하게 쓸 수 있게 [&#8230;]</p>
+The post <a href="https://techblog.woowahan.com/27604/">배달의민족 전자계약서 화면 개편기: AI에게 맡긴 것과 사람이 챙긴 것</a> first appeared on <a href="https://techblog.woowahan.com">우아한형제들 기술블로그</a>.]]></description>
+										<content:encoded><![CDATA[<h2>들어가며</h2>
+<p>전자계약서는 파트너(사장님)가 배달의민족을 처음 시작할 때 작성하는 전자문서입니다. 영업 담당자가 파트너와 함께 작성하고, 계약 내용을 바꿀 때도 같은 문서를 씁니다. 이 문서를 쓰는 작성 화면은 사업자 정보, 가게 정보, 광고 정보 같은 섹션이 모여 계약서 한 장을 이루는 큰 폼입니다.</p>
+<p>2026년 4월부터 6월까지 이 작성 화면을 개편했습니다. 작성자가 계약서를 더 편하게 쓸 수 있게 하는 것이 목표였습니다. 그렇게 해서 계약서 한 장을 작성하는 데 드는 시간도 줄이려 했습니다.</p>
+<p>그런데 기존 화면과 코드 위에서는 이 일이 쉽지 않았습니다. 화면은 Bootstrap과 Ant Design 위에서 디자이너 없이 개발자가 그린 것이어서, 사내 디자인시스템을 쓰는 디자이너와 함께 만들 수 없었습니다. 코드에는 폼 값을 관리하는 체계가 없어서, 값을 어디서 바꾸고 어디까지 다시 그려야 하는지 알기 어려웠습니다. 그래서 화면과 코드 구조도 함께 바꿨습니다.</p>
+<p>코드는 처음부터 새로 썼고, 그 대부분을 AI 코딩 도구(클로드 코드)로 만들었습니다. 이 글은 그 과정에서 무엇을 AI에게 맡기고 무엇을 직접 챙겼는지 정리한 기록입니다. 개편하는 동안 부딪힌 질문은 세 가지였습니다.</p>
+<ul>
+<li>AI가 만든 코드가 아무 데나 생기는 것을 어떻게 막을까</li>
+<li>AI에게 로직을 맡길 때 &quot;그게 아니고&quot;를 반복하지 않으려면 어떻게 해야 할까</li>
+<li>그래서 실제로 얼마나 빨라지고, 배포 뒤 품질은 어땠을까</li>
+</ul>
+<p>같은 고민을 하는 분께 이 글이 참고가 되면 좋겠습니다.</p>
+<h2>무엇이 바뀌었나</h2>
+<p>먼저 개편 전후 화면입니다.</p>
+<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin:0 0 1.5em">
+<figure style="margin:0;flex:2688;min-width:200px">
+    <img decoding="async" src="https://techblog.woowa.in/wp-content/uploads/2026/09/%EA%B5%AC_%EC%A0%84%EC%9E%90%EA%B3%84%EC%95%BD%EC%84%9C-750x569.png" alt="개편 전 전자계약서" style="width:100%;height:auto"><figcaption style="text-align:center;font-size:0.9em;color:#666;margin-top:4px">개편 전 전자계약서</figcaption></figure>
+<figure style="margin:0;flex:3858;min-width:200px">
+    <img decoding="async" src="https://techblog.woowa.in/wp-content/uploads/2026/09/%EC%8B%A0_%EC%A0%84%EC%9E%90%EA%B3%84%EC%95%BD%EC%84%9C-750x396.png" alt="개편 후 전자계약서" style="width:100%;height:auto"><figcaption style="text-align:center;font-size:0.9em;color:#666;margin-top:4px">개편 후 전자계약서</figcaption></figure>
+</div>
+<p>가장 큰 변화는 디자인입니다. 기존 화면은 외부 라이브러리로 만든 것이어서 디자이너의 작업을 그대로 옮기기도, 디자인을 고쳐 달라고 부탁하기도 어려웠습니다. 개편 후에는 사내 디자인시스템인 우아한공방을 적용했습니다. 디자이너는 이 디자인시스템을 기준으로 작업하기 때문에, 이제 처음부터 디자이너와 함께 화면을 만들 수 있습니다.</p>
+<p>작성자가 편하게 쓸 수 있도록 편의 기능도 두 가지 더했습니다.</p>
+<ul>
+<li>오른쪽의 첨부 서류 모아보기: 기존에는 서류가 섹션마다 흩어져 있어서 하나씩 찾아가 확인해야 했습니다. 이제는 계약서에 첨부된 이미지를 한 곳에서 볼 수 있습니다.</li>
+<li>왼쪽의 앵커 메뉴: 기존에는 잘못 입력한 값을 찾으려면 긴 폼을 위에서부터 훑어야 했습니다. 이제는 메뉴에서 섹션 사이를 바로 이동하고, 잘못 입력한 값이 있는 섹션은 메뉴에 에러 메시지로 표시됩니다.</li>
+</ul>
+<h2>코드는 왜 새로 썼나</h2>
+<p>기존 코드의 문제는 폼 값을 관리하는 체계가 없다는 것이었습니다. 전자계약서 화면은 전체가 하나의 폼이라서, 어느 섹션의 값을 바꿔도 결국 같은 계약서 데이터를 고치는 일입니다. 그런데 그 데이터를 다루는 방식이 정해져 있지 않았습니다.</p>
+<p>기존에는 계약서 전체를 담은 큰 객체 하나를 props로 내려보냈습니다. 값을 바꿀 때는 그 객체를 직접 수정하고, 컴포넌트 트리에서 상위 컴포넌트를 골라 강제로 다시 그렸습니다.</p>
+<pre><code class="language-tsx">// 계약서 전체를 하나의 객체로 만들어 최상위에서 props로 내려보낸다
+const contractData = new ContractData(data)
+
+// 깊은 곳의 컴포넌트(사업자등록번호 입력란)에서 값을 바꿀 때
+class BusinessNumberInput extends React.Component {
+  handleChange = (e) =&gt; {
+    // 1. props로 받은 객체를 직접 고친다
+    this.props.contractData.document.owner.businessNumber = e.target.value
+
+    // 2. 리액트는 이 변경을 모르므로, 상위 컴포넌트를 찾아 강제로 다시 그린다
+    this.props.parent.parent.forceUpdate()
+  }
+}</code></pre>
+<p>이 방식에서는 어느 컴포넌트가 어떤 값을 바꾸는지 찾기 어렵습니다. 값을 바꾼 뒤 어디까지 올라가서 다시 그려야 하는지도 매번 사람이 판단해야 했습니다.</p>
+<p>이런 코드가 컴포넌트마다 들어 있어서 몇 곳만 고쳐서는 체계가 생기지 않았습니다. 디자인시스템을 바꾸면서 화면 코드도 어차피 모두 새로 그려야 했으니, 고치는 것보다 새로 쓰는 쪽을 택했습니다.</p>
+<h2>코드를 세 영역으로 나눴다</h2>
+<p>새 전자계약서의 코드는 뷰(View), 폼(Form), 스토어(Store)로 나눴습니다. 뷰는 화면을 그리고, 폼은 사용자가 입력하는 값을 갖고, 스토어는 그 밖의 상태와 동작을 맡습니다. 앱 바깥에 닿는 곳은 스토어 하나입니다.</p>
+<p>세 영역과 그 사이의 흐름은 다음과 같습니다.</p>
+<p><img decoding="async" src="https://techblog.woowa.in/wp-content/uploads/2026/09/세_영역_구조.svg" alt="뷰, 폼, 스토어 세 영역과 그 사이의 흐름" /></p>
+<p><pre><code>샘플</code></pre>]]></content:encoded>
+					
+					<wfw:commentRss>https://techblog.woowahan.com/27604/feed/</wfw:commentRss>
+			<slash:comments>0</slash:comments>
+		
+		
+			</item>
+<item>
+		<title>집 나간 네트워크는 돌아왔는데 React.lazy는 왜 안 돌아올까</title>
+		<link>https://techblog.woowahan.com/27330/</link>
+					<comments>https://techblog.woowahan.com/27330/#respond</comments>
+		
+		<dc:creator><![CDATA[홍영민]]></dc:creator>
+		<pubDate>Tue, 15 Sep 2026 04:50:15 +0000</pubDate>
+				<category><![CDATA[Frontend]]></category>
+		<guid isPermaLink="false">https://techblog.woowa.in/?p=27330</guid>
+
+					<description><![CDATA[<p>들어가며 파트너(업주)님이 영업 내내 주문을 받는 배민주문접수 웹뷰를 개발하던 중 QA 과정에서 네트워크 OFF -&#62; ON으로 변경 후 다른 화면으로 이동 시 오류 화면이 노출된다는 티켓을 전달받았습니다. 원인을 파악해 보니 브라우저가 모듈 로드 실패를 기억하고 있었고, 이는 버그가 아니라 HTML 스펙에 명시된 동작이었습니다. 더 곤란한 것은 프런트엔드 빌드 도구인 Vite 공식 문서가 안내하는 해결책 중 [&#8230;]</p>
+The post <a href="https://techblog.woowahan.com/27330/">집 나간 네트워크는 돌아왔는데 React.lazy는 왜 안 돌아올까</a> first appeared on <a href="https://techblog.woowahan.com">우아한형제들 기술블로그</a>.]]></description>
+										<content:encoded><![CDATA[<h2>들어가며</h2>
+<p>파트너(업주)님이 영업 내내 주문을 받는 배민주문접수 웹뷰를 개발하던 중 QA 과정에서 네트워크 OFF -&gt; ON으로 변경 후 다른 화면으로 이동 시 오류 화면이 노출된다는 티켓을 전달받았습니다.</p>
+<p><img decoding="async" src="https://techblog.woowa.in/wp-content/uploads/2026/09/01-ticket-870x525.png" alt="" /></p>
+<p>원인을 파악해 보니 브라우저가 모듈 로드 실패를 기억하고 있었고, 이는 버그가 아니라 HTML 스펙에 명시된 동작이었습니다. 더 곤란한 것은 프런트엔드 빌드 도구인 Vite 공식 문서가 안내하는 해결책 중 하나가 새로고침이었다는 점입니다. 배민주문접수 웹뷰는 새로고침을 하면 앱 상태가 초기화되는 SPA(single page application)라 그 방법을 사용할 수 없었습니다. React.lazy 사용을 통째로 포기했다가 되살린 과정을 공유합니다.</p>
+<h2>실패를 기억하는 곳을 찾아가기</h2>
+<h3>네트워크는 복구됐는데 화면은 그대로였다</h3>
+<p>배포일이 이틀 앞으로 다가온 시점이었습니다. 지체할 시간 없이 곧바로 티켓의 증상 재현에 나섰습니다.</p>
+<ol>
+<li>앱을 켠 상태에서 네트워크 연결을 해제합니다.</li>
+<li>다른 화면으로 이동합니다.</li>
+<li>네트워크를 다시 연결합니다.</li>
+</ol>
+<p>&quot;오류가 발생했습니다.&quot; 페이지가 보입니다. 어느 화면으로 이동해도, 몇 번을 다시 시도해도 같습니다. 네트워크는 이미 정상인데 왜 계속 실패하는 것인지 궁금했습니다.</p>
+<p>Sentry를 확인해 보니 모듈을 받아오지 못했다는 에러가 여러 화면에 걸쳐 쌓여 있었습니다.</p>
+<p><img decoding="async" src="https://techblog.woowa.in/wp-content/uploads/2026/09/02-sentry-error-870x375.png" alt="" /></p>
+<p>당시 배민주문접수 웹뷰는 화면(라우트) 단위로 React.lazy와 dynamic import를 사용하여 코드 스플리팅을 하고 있었습니다.</p>
+<pre><code class="language-ts">// pages/Foo/index.ts
+export default lazy(() =&gt; import(&#039;./ui/Foo&#039;));</code></pre>
+<p>네트워크 연결이 끊어진 동안 아직 로드되지 않은 화면으로 이동하면 dynamic import가 실패했습니다. 여기까지는 예측할 수 있는 실패였습니다. 문제는 네트워크가 돌아온 뒤에도 계속 실패한다는 점이었습니다.</p>
+<h3>React.lazy 재시도가 통하지 않았다</h3>
+<p>처음 의심한 것은 React.lazy였습니다. <a href="https://react.dev/reference/react/lazy">React 공식 문서</a>에는 Promise와 그 결과가 캐시되어 load 함수가 중복 호출되지 않으며, 실패 시 가장 가까운 ErrorBoundary로 에러를 전달한다고 안내합니다. 한 번 실패한 뒤에 다시 시도할 방법이 있는지 문서만으로 알 수 없어서 <a href="https://github.com/facebook/react/blob/main/packages/react/src/ReactLazy.js">React 리포지토리의 ReactLazy.js</a>를 열어 봤습니다.</p>
+<p>React.lazy 컴포넌트는 내부에 상태 하나를 들고 있습니다. <code>Uninitialized</code>에서 시작해 <code>Pending</code>을 거쳐 <code>Resolved</code>나 <code>Rejected</code>로 가는데, 한 번 <code>Rejected</code> 상태가 되면 다른 상태로 전환될 수 없습니다. 그 뒤로는 렌더링될 때마다 캐시된 에러를 던질 뿐이고, React.lazy에 넘긴 함수는 다시 호출되지 않습니다.</p>
+<p><img decoding="async" src="https://techblog.woowa.in/wp-content/uploads/2026/09/03-lazy-state-870x375.png" alt="" /></p>
+<p>이 증상을 검색했을 때 가장 먼저 접하게 되는 해법은 React.lazy에 전달한 함수가 실패하면 <code>import()</code>를 다시 호출하는 재시도 패턴입니다. AI가 가장 먼저 제안해 준 해결책 역시 이 재시도 패턴이었습니다. 배민주문접수 웹뷰에도 그대로 적용해 봤습니다.</p>
+<p>그러나 동작하지 않았습니다. 더 이상했던 점은 실패하는 양상이었습니다. 재시도가 분명히 새 <code>import()</code>를 호출하는데도 네트워크 탭에 요청이 기록되지 않았습니다. 브라우저가 요청을 시도하지도 않고 즉시 같은 에러를 돌려주고 있었던 것입니다. 네트워크 요청조차 보내지 않고 즉시 에러를 반환한다면, 브라우저 어딘가에 실패 상태가 기록되어 있다는 뜻이었습니다. React의 상태를 새로 만들어 처음부터 다시 시작해도 새로 호출한 <code>import()</code>가 즉시 거부되는 것을 보면, 실패를 기억하고 있는 것은 React 바깥이겠다는 생각이 들었습니다.</p>
+<h3>모듈 맵은 실패도 기억한다</h3>
+<p>ES 모듈에는 모듈 맵(module map)이라는 document 단위 캐시가 있습니다. 브라우저는 모듈을 URL 단위로 모듈 맵에 캐시하고, 같은 URL을 다시 import하면 네트워크 대신 모듈 맵에 저장된 결과를 반환합니다. 같은 모듈이 두 번 평가되지 않게 하는 장치입니다.</p>
+<p>문제를 겪은 2026년 6월 당시 <a href="https://html.spec.whatwg.org/multipage/webappapis.html#module-map">HTML 스펙의 모듈 맵 정의</a>에는 모듈 맵에 담기는 값의 종류에 이런 항목이 있었습니다.</p>
+<blockquote>
+<p>null (used to represent failed fetches)</p>
+</blockquote>
+<p>즉 불러오기에 실패한 것을 표현하는 값이 따로 정의되어 있습니다. 모듈 맵이 실패까지 캐시하는 것은 브라우저나 라이브러리의 버그가 아니라 스펙에 명시된 동작이었고, 브라우저는 스펙을 그대로 따르고 있었습니다. 이 문구는 최근 스펙 개정으로 현재는 빠져 있으며, <a href="https://github.com/whatwg/html/pull/10327/files">스펙 변경 내역</a>의 삭제된 줄에서 확인할 수 있습니다.</p>
+<p><img decoding="async" src="https://techblog.woowa.in/wp-content/uploads/2026/09/04-module-map-870x555.png" alt="" /></p>
+<p>한 번 실패한 모듈 URL은 document가 존재하는 동안 실패로 고정되고, 이후의 <code><pre><code>샘플</code></pre>]]></content:encoded>
+					
+					<wfw:commentRss>https://techblog.woowahan.com/27330/feed/</wfw:commentRss>
+			<slash:comments>0</slash:comments>
+		
+		
+			</item>
+<item>
+		<title>AI 전환, 우리가 도운 건 돕는 사람이었습니다</title>
+		<link>https://techblog.woowahan.com/27640/</link>
+					<comments>https://techblog.woowahan.com/27640/#respond</comments>
+		
+		<dc:creator><![CDATA[김사랑]]></dc:creator>
+		<pubDate>Mon, 14 Sep 2026 07:15:55 +0000</pubDate>
+				<category><![CDATA[AI]]></category>
+		<category><![CDATA[Culture]]></category>
+		<category><![CDATA[Education]]></category>
+		<guid isPermaLink="false">https://techblog.woowa.in/?p=27640</guid>
+
+					<description><![CDATA[<p>1편 &#34;AI로 바뀐 건 업무가 아니라 사람이었습니다&#34;는 옆자리 동료가 덜 힘들어졌으면 좋겠다는 마음이 계속될 것 같다는 말로 끝났습니다. 혹시 못 읽으셨어도 따라오실 수 있게 배경만 짧게 정리합니다. 저는 우아한형제들에서 개발자를 길러내는 교육의 코치로 일하며 배운 게 하나 있습니다. 사람은 설명을 들어서가 아니라 자기 손으로 부딪혀봐야 변한다는 것입니다. 그 원리로 개발을 전혀 모르는 동료 15명이 5주 [&#8230;]</p>
+The post <a href="https://techblog.woowahan.com/27640/">AI 전환, 우리가 도운 건 돕는 사람이었습니다</a> first appeared on <a href="https://techblog.woowahan.com">우아한형제들 기술블로그</a>.]]></description>
+										<content:encoded><![CDATA[<p>1편 &quot;<a href="https://techblog.woowahan.com/26034/">AI로 바뀐 건 업무가 아니라 사람이었습니다</a>&quot;는 옆자리 동료가 덜 힘들어졌으면 좋겠다는 마음이 계속될 것 같다는 말로 끝났습니다. 혹시 못 읽으셨어도 따라오실 수 있게 배경만 짧게 정리합니다.</p>
+<p>저는 우아한형제들에서 개발자를 길러내는 교육의 코치로 일하며 배운 게 하나 있습니다. 사람은 설명을 들어서가 아니라 자기 손으로 부딪혀봐야 변한다는 것입니다. 그 원리로 개발을 전혀 모르는 동료 15명이 5주 동안 자기 현업 문제를 AI로 직접 해결해보는 &#8216;AI Dive Deep&#8217;을 열었고, 그 동료들이 스스로 만든 변화가 1편의 이야기였습니다. 1편 마지막에는 전담 TF가 꾸려졌다는 소식과 함께 두 가지 방향도 예고했습니다. 그런데 실제로는 그 둘 중 어느 쪽도 아닌 길로 갔습니다. 계획을 바꾼 건 숫자 하나였습니다.</p>
+<h2>손을 든 사람은 92명, 도울 수 있는 사람은 저 하나였습니다</h2>
+<p>&quot;반복되는 일에 치인다&quot;는 고충이 15명만의 것일 리 없었습니다. 같은 고충을 안고 있는 동료가 대체 얼마나 많을지 궁금해져 수요조사를 열었습니다. 얼마나 신청할지 감이 오지 않았습니다.</p>
+<p>그런데 92명이 손을 들었습니다. PM과 기획, 운영, 사업과 영업, 마케팅, HR, 디자인, 데이터 분석, CS까지. 거의 모든 직군이 걸쳐 있었습니다. 신청서에 적힌 어려움의 결은 놀랄 만큼 닮아 있었습니다. 반복되는 데이터 취합, 회의록과 보고서 자동화, 정책과 히스토리 확인, 손으로 관리하는 대시보드. 저마다 다른 일을 하지만 힘들어하는 이유는 하나였습니다.<br />
+<img decoding="async" src="https://techblog.woowa.in/wp-content/uploads/2026/09/테크블로그_이미지_1-750x422.png" alt="" /><br />
+<em>92명의 직군별 신청 분포. 오른쪽은 직군마다 가장 많이 적힌 고충으로, 열 직군 중 여섯이 손으로 하는 반복 작업이었다.</em></p>
+<p>손을 든 숫자 앞에서 막막했습니다. TF는 꾸려졌지만 다른 동료들은 본업이 따로 있어 직접 코칭에 나설 수 없었습니다. 한 사람 한 사람 만나 옆에서 문제를 쪼개고 첫걸음을 잡아줄 사람은 저 하나였습니다. 강의로 묶기에는 신청자마다 업무 맥락이 너무 달랐습니다. 회의록이 급한 사람에게 데이터 수집을 가르치는 건 의미가 없습니다. 그렇다고 한 사람이 92명을 1:1로 맡을 수도 없었습니다.</p>
+<p>그제야 병목이 보였습니다. AI 도구는 이미 충분했고 모자란 건 <strong>옆에서 도울 수 있는 사람의 수</strong>였습니다. AI 전환을 가로막는 게 기술이 아니라 사람이라는 걸 이때 숫자로 처음 확인했습니다.</p>
+<h2>알려주는 대신 옆에 앉는 사람을 늘렸습니다</h2>
+<p>한 사람이 다 감당할 수 없다면 답은 하나였습니다. 도울 수 있는 사람을 늘려야 했습니다. 그런데 말처럼 간단하지 않았습니다. &quot;AI 잘하는 사람을 강사로 세우면 되지 않나&quot;라는 흔한 해법과 제가 하려는 것은 결이 달랐거든요. 옆자리 동료에게 AI를 알려준 적이 있는 분은 아실 겁니다. 두 달 뒤에도 그 동료는 번역기로만 씁니다. 도구가 없어서도 의욕이 없어서도 아니고 그저 쓰던 대로 씁니다. 강사를 세우는 건 지식을 옮기는 일이라 이 습관을 건드리지 못합니다. 필요한 건 지식이 아니라 문제를 쪼개는 동안 옆에 앉아줄 사람이었습니다.</p>
+<p>신청서에 적혀 있던 반복 업무의 고충은 겉으로 드러난 증상에 가까웠습니다. 그 밑에는 자기 문제를 어디서부터 풀어야 할지 막막한데 편하게 물어볼 곳이 없는 상태가 있었습니다. 다들 각자 고군분투하고 있었습니다. 도움을 줄 수 있는 사람과 도움이 필요한 사람을 연결해주는 일이 먼저였습니다. 도움을 받은 사람이 다음 사람을 돕는 구조가 실제로 동작한다는 것은 개발자를 길러내는 교육을 운영하며 이미 확인한 적이 있었습니다. AI 도입보다 사람의 변화가 AI 전환의 본질이라고 믿는 이유입니다.</p>
+<p>그렇게 만든 것이 &#8216;함께 자라는 AI 코칭 레벨1&#8217;입니다. 코치가 코칭을 직접 겪어보는 입문 과정입니다. 5주 동안 매주 평일 저녁 2시간씩 함께 모이고 페어별로 1시간을 따로 코칭합니다. 코치 두 명이 짝(페어)을 이뤄 동료 한 명(피코치)을 코칭합니다. 피코치는 코치가 옆에서 돕지만 답은 스스로 찾아야 하는 사람입니다.</p>
+<p><img decoding="async" src="https://techblog.woowa.in/wp-content/uploads/2026/09/테크블로그_사진_1-750x500.png" alt="" /><br />
+<em>평일 저녁의 워크숍 모습. 코치 페어와 피코치가 소그룹으로 둘러앉아 있다.</em></p>
+<p>기수가 쌓일수록 코치가 늘고 그만큼 감당할 수 있는 수요도 늘어납니다. 한 사람이 전부 짊어지는 대신 여러 코치가 나눠 짊어지는 구조입니다. 1편에서 두 사람이 직접 하던 일을 이제는 이 시스템이 대신하는 셈입니다. 다만 이 구조에는 전제가 하나 있습니다. 이 흐름을 움직이는 힘이 보상이 아니라는 것입니다. 코치에게 주어지는 보상은 아무것도 없습니다. 급여도 승진도 공식적인 인정도 없습니다. 동료가 잘되었으면 하는 마음이 이 과정의 유일한 동력입니다.</p>
+<p>규모를 키우면서도 한 사람 한 사람 곁에 붙어 있는 시간은 줄이지 않으려 두 가지를 더 정했습니다. 하나는 코치 두 명이 피코치 한 명을 함께 맡는 것입니다. 한 명이 놓친 것을 다른 한 명이 짚어주고 옆에서 코칭하는 것을 지켜보는 일 자체가 훈련입니다. 다른 하나는 페어를 맺을 때 AI를 쓴 경험의 깊이가 다른 두 사람을 일부러 짝지은 것입니다. 출발점이 다른 두 사람이 나란히 서면 한쪽이 다른 쪽을 자연스럽게 보완하고 코칭을 준비하는 과정 자체가 서로에게 배움이 됩니다. 수를 늘린다고 곁에 붙어 있는 밀도까지 포기하지는 않겠다는 뜻이었습니다.</p>
+<p>이 과정을 어떻게 설계했고 왜 그렇게 했는지 지금부터 하나씩 풀어보겠습니다.</p>
+<h2>&#8216;돕는다&#8217;부터 다시 정의해야 했습니다</h2>
+<p>구조를 짜고 나니 더 중요한 질문이 남았습니다. 이 과정에서 무엇을 성공이라고 부를 것인가. 바꿔 말하면 돕는다는 건 대체 무엇인가. 코치가 붙어서 피코치의 문제를 해결해주면 그건 도운 걸까요? 아니라고 봤습니다. 그러면 다음에 비슷한 문제가 생겼을 때 피코치는 또 코치를 찾아야 하니까요.</p>
+<p>]]></content:encoded>
+					
+					<wfw:commentRss>https://techblog.woowahan.com/27640/feed/</wfw:commentRss>
+			<slash:comments>0</slash:comments>
+		
+		
+			</item></channel>
+</rss>

@@ -9,4 +9,13 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+    // API 문서 (원본과 같은 버전: Boot 3.4 짝)
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
+
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
+    testRuntimeOnly 'com.h2database:h2'   // 테스트만 H2. MariaDB 없이도 gradlew test 가능 (원본과 같음)
+
+    // 글 본문 HTML 정리 (원본 PostIngestService)
+    implementation 'org.jsoup:jsoup:1.21.1'
 }
