@@ -9,4 +9,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+    // API 문서 (원본과 같은 버전: Boot 3.4 짝)
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
+
+    // 수집: RSS 피드와 글 본문 HTML 을 읽는다 (원본 features/collect)
+    implementation 'org.jsoup:jsoup:1.21.1'
 }
