@@ -112,14 +112,15 @@ public ResponseEntity<BookmarkResponseDTO> addBookmark(
 - 형식은 `{ "code", "message", "field" }` 하나예요. 스택 트레이스를 응답에 싣지 않아요.
 - 서비스마다 `<서비스>ErrorCode` enum을 만들고 `common-web`의 `ErrorCode` 인터페이스를 구현해요. 던질 때는 `BusinessException`을 써요. (1번 확정)
 - `code`는 `UPPER_SNAKE_CASE`이고, 원본에 있던 코드는 이름을 바꾸지 않아요.
+- 여러 서비스가 같이 쓰는 코드(아래 표의 `ALREADY_BOOKMARKED` 외 전부)는 `common-web`의 `CommonErrorCode`에 있어요. 서비스에만 있는 코드(`ALREADY_BOOKMARKED`, `PROFILE_REQUIRED` 등)만 `<서비스>ErrorCode`에 둬요.
 
 | 상황 | HTTP | code 예 |
 | --- | --- | --- |
 | 입력값이 틀림 | 400 | `INVALID_INPUT` |
 | 토큰 없음·만료 (Gateway) | 401 | `UNAUTHORIZED` |
 | 권한 없음 (Gateway) | 403 | `FORBIDDEN` |
-| 대상 없음 | 404 | `POST_NOT_FOUND` |
-| 이미 있음 | 409 | `BOOKMARK_ALREADY_EXISTS` |
+| 대상 없음 | 404 | `NOT_FOUND` |
+| 이미 있음 | 409 | `ALREADY_BOOKMARKED` (bookmark) |
 | 다른 서비스 호출 실패 | 502 | `UPSTREAM_ERROR` |
 
 ## Feign
