@@ -1,15 +1,13 @@
 spring:
   application:
     name: gateway
+  config:
+    # 나머지 설정(JWT 키, CORS, Eureka 주소)은 Config Server가 설정 저장소에서 내려준다.
+    # optional은 테스트에서 Config를 끌 수 있게 하려는 것. 실행 중에는 fail-fast라 Config가 꺼져 있으면 뜨지 않는다
+    import: optional:configserver:${CONFIG_URL:http://localhost:8888}
+  cloud:
+    config:
+      fail-fast: true
 
 server:
   port: 8000
-
-eureka:
-  client:
-    service-url:
-      # 로컬 기본값. compose·EC2에서는 EUREKA_URL로 바꾼다 (Config Server 이슈에서 설정 저장소로 옮김)
-      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
-  instance:
-    # 컨테이너 안에서는 호스트 이름 대신 IP로 등록해야 다른 컨테이너가 찾아온다
-    prefer-ip-address: true

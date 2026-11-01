@@ -399,7 +399,10 @@ collect_job (
 
 ### Config 설정 저장소
 
-설정 파일은 이 저장소(공개)가 아니라 **별도 private GitHub 저장소**에 둬요. Config Server가 이 저장소를 읽어 각 서비스에 설정을 내려줘요. 저장소 이름과 접근 권한은 1번이 만들며 정해요.
+설정 파일은 이 저장소(공개)가 아니라 **별도 private GitHub 저장소**(`LGCNS-MiniProject-Group3/config`)에 둬요. Config Server가 이 저장소를 읽어 각 서비스에 설정을 내려줘요. 읽기 권한은 1번이 팀원에게 줘요.
+
+- 서비스는 `CONFIG_URL`(기본 `http://localhost:8888`)의 Config Server에서 `<서비스 이름>`과 `SPRING_PROFILES_ACTIVE` 프로필에 맞는 설정을 받아요.
+- Config Server가 꺼져 있으면 서비스가 뜨지 않아요(`fail-fast`). 그래서 Config Server를 가장 먼저 띄워요.
 
 ```
 (private 설정 저장소)/
