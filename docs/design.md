@@ -410,7 +410,7 @@ collect_job (
 ├─ application-local.yml        # local: IDE에서 서비스 실행, 인프라만 compose
 ├─ application-dev.yml          # dev: compose로 전체 스택 실행
 ├─ application-prod.yml         # prod: EC2 배포
-├─ gateway.yml                  # 라우트, JWT 서명 키, permitAll 목록
+├─ gateway.yml                  # JWT 서명 키, CORS 출처 (라우트·permitAll 목록은 gateway 코드)
 ├─ user.yml                     # DB, Google client id
 ├─ content.yml
 ├─ collector.yml                # Gemini 키, 분류 지시문 버전
