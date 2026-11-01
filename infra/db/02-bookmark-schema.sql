@@ -1,0 +1,1 @@
+-- 2·4번 담당: bookmark, user_guide_flag
