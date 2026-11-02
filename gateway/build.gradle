@@ -7,6 +7,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
+    // Config Server의 갱신 신호를 Kafka로 받는다. WebFlux라 common-web을 쓰지 않아서 여기 따로 둔다
+    implementation 'org.springframework.cloud:spring-cloud-starter-bus-kafka'
 
     // JWT 검사. user 서비스가 발급할 때 쓰는 것과 같은 버전 (원본 0.11 API)
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'

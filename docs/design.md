@@ -429,7 +429,8 @@ collect_job (
 
 - 서비스는 비밀 값을 직접 갖지 않고, Config Server가 풀어서 내려준 값을 받아요.
 - 각 담당이 필요한 비밀 값(Google client id, Gemini 키 등)은 직접 넣지 않고 1번에게 전달해 암호화해서 넣어요.
-- `ENCRYPT_KEY`와 저장소 토큰은 팀 채널 같은 비공개 경로로만 주고받아요.
+- `ENCRYPT_KEY`와 저장소 토큰은 팀 채널 같은 비공개 경로로만 주고받아요. 1번이 팀원(로컬 실행)과 7번(EC2 `.env`, GitHub Secrets)에게 전달해요. 이슈·PR·커밋·공개 문서에는 적지 않아요.
+- `ENCRYPT_KEY`는 한 번 정하면 바꾸지 않아요. 바꾸면 설정 저장소의 `{cipher}` 값을 모두 다시 암호화해야 해요. 키가 새어 나가면 1번이 새 키로 다시 암호화하고 팀에 새 키를 전달해요.
 - 설정을 고친 뒤에는 Spring Cloud Bus로 한 번에 반영해요(아래).
 
 ### 설정 일괄 갱신 (Spring Cloud Bus, 선택 1번)
@@ -440,9 +441,12 @@ collect_job (
 2. Config Server의 `POST /actuator/busrefresh`를 불러요.
 3. Config Server가 Kafka의 Bus 토픽(`springCloudBus`)으로 갱신 신호를 보내고, 연결된 서비스가 설정을 다시 받아요.
 
-- Config Server와 각 서비스에 `spring-cloud-starter-bus-kafka`를 넣어요 (1번이 `common-web`·config 모듈에 포함).
-- 바뀐 값을 바로 다시 읽어야 하는 빈에는 `@RefreshScope`를 달아요. 시연용 값(예: 가이드 지시문 버전, Feign 타임아웃)을 하나 정해 갱신 전후를 보여 줘요.
-- `busrefresh` 엔드포인트는 Gateway에 연결하지 않아요. 운영자만 내부에서 불러요.
+- Config Server와 각 서비스에 `spring-cloud-starter-bus-kafka`를 넣어요 (1번이 `common-web`·config 모듈에 포함). gateway는 WebFlux라 common-web을 쓰지 않아서 gateway 모듈에 따로 넣어요.
+- Kafka 주소: 서비스는 설정 저장소의 `spring.kafka.bootstrap-servers`를 써요. Config Server는 설정 저장소를 읽지 않아서 `KAFKA_BOOTSTRAP_SERVERS` 실행 환경 변수(기본 `localhost:9092`)로 받아요.
+- 바뀐 값을 바로 다시 읽어야 하는 빈에는 `@RefreshScope`를 달아요. 시연 값은 Gateway의 CORS 허용 출처(`app.cors-origins`)예요. 갱신 전에는 새 출처의 사전 요청이 403, 갱신 후에는 200이에요. 다른 서비스는 갱신 신호를 받으면 로그에 바뀐 키 이름(`Keys refreshed [...]`)을 남겨요.
+- `@ConfigurationProperties`로 받는 값은 `@RefreshScope` 없이도 갱신 때 다시 묶여요. `@Value`로 받아 빈을 만들 때 쓰는 값에만 `@RefreshScope`가 필요해요.
+- `busrefresh` 엔드포인트는 Gateway에 연결하지 않아요. 운영자만 내부에서 불러요. 로컬은 `curl -X POST localhost:8888/actuator/busrefresh`, EC2는 8888을 외부에 열지 않으니 EC2 안에서 같은 명령을 실행해요.
+- 테스트에서는 Bus를 꺼요(`spring.cloud.bus.enabled: false`, 각 서비스의 `src/test/resources/config/application.yml`). 켜 두면 없는 Kafka에 계속 접속을 시도해서 테스트가 몇 분씩 느려져요.
 - Bus 토픽은 업무 토픽(`recu.*`)과 별개예요. 업무 메시지 규칙(6장)을 적용하지 않아요.
 
 ### 기동 순서 (Compose `depends_on`)
