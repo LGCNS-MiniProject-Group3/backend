@@ -9,4 +9,6 @@ dependencies {
 
     // 자동 설정 어노테이션. 서비스는 Spring Boot를 이미 갖고 있어서 compileOnly로 둔다
     compileOnly 'org.springframework.boot:spring-boot-autoconfigure'
+    // 메시지 JSON 변환. 서비스는 Spring Boot가 만든 ObjectMapper를 이미 갖고 있어서 compileOnly로 둔다
+    compileOnly 'com.fasterxml.jackson.core:jackson-databind'
 }
