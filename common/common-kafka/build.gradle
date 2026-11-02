@@ -1,3 +1,12 @@
 plugins {
     id 'java-library'
 }
+
+// 서비스가 Kafka 업무 메시지(design.md 6장)를 보내고 받을 때 같이 쓰는 모듈 (6번)
+dependencies {
+    // 서비스가 따로 선언하지 않아도 쓰도록 api로 넘겨준다. 버전은 Spring Boot BOM이 정한다
+    api 'org.springframework.kafka:spring-kafka'
+
+    // 자동 설정 어노테이션. 서비스는 Spring Boot를 이미 갖고 있어서 compileOnly로 둔다
+    compileOnly 'org.springframework.boot:spring-boot-autoconfigure'
+}
