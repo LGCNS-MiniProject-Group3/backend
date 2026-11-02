@@ -5,6 +5,7 @@ import com.recu.common.web.error.CommonErrorCode;
 import com.recu.user.database.entity.UserEntity;
 import com.recu.user.database.repository.UserRepository;
 import com.recu.user.error.UserErrorCode;
+import com.recu.user.features.user.domain.dto.UserLoginRequestDTO;
 import com.recu.user.features.user.domain.dto.UserLogoutRequestDTO;
 import com.recu.user.features.user.domain.dto.UserResponseDTO;
 import com.recu.user.token.JwtProvider;
@@ -22,6 +23,8 @@ public class UserService {
   private final UserRepository userRepository;
   private final JwtProvider jwtProvider;
   private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
+  public record LoginResult(UserResponseDTO response, String accessToken, String refreshToken) {}
 
   @Transactional
   public UserResponseDTO signUp(String email, String rawPassword, String name) {
@@ -50,6 +53,35 @@ public class UserService {
         .name(user.getName())
         .profileCompleted(false)
         .build();
+  }
+
+  // 로그인시 진입하는곳
+  @Transactional
+  public LoginResult signIn(UserLoginRequestDTO request) {
+    UserEntity user =
+        userRepository
+            .findByEmail(request.getEmail())
+            // 로그인시 이메일 없으면 출력하는 에러
+            .orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED));
+
+    // 비밀번호가 아니면?
+    if (!passwordEncoder.matches(request.getPassword(), user.getPassword_hash())) {
+      throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
+    }
+
+    String accessToken = jwtProvider.createAccessToken(user.getUser_id(), user.getRole());
+    String refreshToken = jwtProvider.createRefreshToken(user.getUser_id());
+
+    userRepository.updateRefreshToken(user.getUser_id(), refreshToken);
+
+    UserResponseDTO response =
+        UserResponseDTO.builder()
+            .userId(user.getUser_id())
+            .name(user.getName())
+            .profileCompleted(user.getCareer_years() != null)
+            .build();
+
+    return new LoginResult(response, accessToken, refreshToken);
   }
 
   @Transactional

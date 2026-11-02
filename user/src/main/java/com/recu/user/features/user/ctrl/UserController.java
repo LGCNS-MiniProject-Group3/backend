@@ -1,5 +1,6 @@
 package com.recu.user.features.user.ctrl;
 
+import com.recu.user.features.user.domain.dto.UserLoginRequestDTO;
 import com.recu.user.features.user.domain.dto.UserResponseDTO;
 import com.recu.user.features.user.domain.dto.UserSignupRequestDTO;
 import com.recu.user.features.user.service.UserService;
@@ -11,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -75,17 +77,17 @@ public class UserController {
 
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
-  //    @PostMapping("/api/auth/login")
-  //    public ResponseEntity<UserResponseDTO> login(
-  //        @Valid @RequestBody UserLoginRequestDTO request) {
-  //
-  //        UserService.LoginResult result = userService.signIn(request);
-  //
-  //        return ResponseEntity.ok()
-  //            .header(HttpHeaders.AUTHORIZATION, "Bearer " + result.accessToken())
-  //            .header("Refresh-Token", result.refreshToken())
-  //            .body(result.response());
-  //    }
+
+  @PostMapping("/api/auth/login")
+  public ResponseEntity<UserResponseDTO> login(@Valid @RequestBody UserLoginRequestDTO request) {
+
+    UserService.LoginResult result = userService.signIn(request);
+
+    return ResponseEntity.ok()
+        .header(HttpHeaders.AUTHORIZATION, "Bearer " + result.accessToken())
+        .header("Refresh-Token", result.refreshToken())
+        .body(result.response());
+  }
 
   //  @PostMapping("/google")
   //  public ResponseEntity<?> sinIn(@RequestBody UserLoginRequestDTO request) {

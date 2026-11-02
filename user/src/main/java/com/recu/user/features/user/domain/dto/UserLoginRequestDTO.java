@@ -1,11 +1,13 @@
 package com.recu.user.features.user.domain.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
+import org.hibernate.validator.constraints.Email;
 
 @Builder
 @Getter
@@ -14,6 +16,9 @@ import lombok.ToString;
 @AllArgsConstructor
 public class UserLoginRequestDTO {
 
-  // Google userinfo API에서 사용자를 확인할 OAuth 2.0 access token
-  @NotBlank private String googleAccessToken;
+  @NotBlank @Email private String email;
+
+  @NotBlank
+  @Size(min = 8)
+  private String password;
 }
