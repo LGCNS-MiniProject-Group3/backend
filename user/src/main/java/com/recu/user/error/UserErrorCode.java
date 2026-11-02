@@ -9,8 +9,8 @@ import org.springframework.http.HttpStatus;
 @Getter
 @RequiredArgsConstructor
 public enum UserErrorCode implements ErrorCode {
-  INVALID_GOOGLE_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 Google 토큰입니다."),
   INVALID_REFRESH_TOKEN(HttpStatus.FORBIDDEN, "유효하지 않은 Refresh 토큰입니다."),
+  EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 가입된 이메일입니다."),
   PROFILE_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 등록된 프로필입니다.");
 
   private final HttpStatus status;
