@@ -25,7 +25,7 @@ docker compose -f infra/compose.yaml --env-file .env up -d
 docker compose -f infra/compose.yaml --env-file .env down
 
 # 볼륨 삭제 후 init SQL 재실행
-docker compose -f infra/compose.yaml down -v
+docker compose -f infra/compose.yaml --env-file .env down -v
 docker compose -f infra/compose.yaml --env-file .env up -d
 ```
 
