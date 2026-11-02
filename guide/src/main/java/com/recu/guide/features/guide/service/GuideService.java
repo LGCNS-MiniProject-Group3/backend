@@ -267,7 +267,7 @@ public class GuideService {
       String section3Text) {}
 
   // ④ 응답이 약속과 다르면 user 쪽 문제로 보고 502 (content가 ①을 받을 때와 같은 처리).
-  // careerYears가 null인 것은 프로필을 아직 등록하지 않은 경우라 여기서 막지 않는다 (호출한 쪽에서 400)
+  // careerYears가 null이면(미등록이거나 경력을 비워 둔 경우) 여기서 막지 않는다 (호출한 쪽에서 400)
   private UserProfileResponseDTO profile(Long userId) {
     UserProfileResponseDTO profile = userClient.getProfile(userId);
     if (profile == null || profile.profileVersion() == null) {
