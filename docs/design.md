@@ -34,7 +34,8 @@
 
 ### 원본 시스템
 
-- React(Vercel) → Spring Boot 단일 서버(Railway) → 외부 연동은 Google OAuth, Gemini예요.
+- React(Vercel) → Spring Boot 단일 서버(Railway) → MariaDB. 외부 연동은 Google OAuth, Gemini예요.
+- 이번 MSA에서는 로그인을 이메일·비밀번호(우리 JWT 발급)로, AI를 OpenAI(gpt-4o-mini)로 바꿔요(4장, 9장).
 - Spring Boot 3.4.5, Java 17, JPA `ddl-auto`로 스키마 생성. 테이블 11개, API 17개.
 - 코드가 `features/` 아래 기능별 패키지(`user`, `tech`, `company`, `post`, `guide`, `bookmark`, `collect`)로 나뉘어 있어 서비스 경계를 잡기 쉬워요.
 - 엔티티는 `database/` 한 곳에 모여 있고, 다른 기능의 엔티티끼리 `@ManyToOne`으로 묶여 있어요. 분리 작업은 대부분 이 연결을 끊는 일이에요.
@@ -126,9 +127,16 @@ Eureka와 Config Server는 모든 서비스가 연결되므로 그림에서 뺐�
 
 오류 응답 본문은 공통 형식인 `{"code":"...","message":"...","field":"..."}`을 사용해요.
 
+`POST /api/auth/google`(원본 Google 로그인)은 제공하지 않아요.
 
-- POST /api/auth/google은 MSA에서 제공하지 않으며, Google OAuth 로그인은 지원하지 않는다고 명시
-- 검증 표 추가: 이메일 필수·형식 확인·최대 100자, 비밀번호 필수·최소 8자·BCrypt 한도 72바이트, 이름 필수·최대 50자. 실패는 400 INVALID_INPUT과 해당 field로 응답
+회원가입 입력 검증 (실패하면 `400 INVALID_INPUT`, `field`에 항목 이름)
+
+| 항목 | 규칙 |
+| --- | --- |
+| `email` | 필수, 이메일 형식, 최대 100자 |
+| `password` | 필수, 최소 8자, 최대 72바이트 (BCrypt 한도) |
+| `name` | 필수, 최대 50자 |
+
 ### 로그인과 토큰 저장
 
 - 회원가입은 `POST /api/auth/signup`으로 이메일·비밀번호·이름을 받아 처리해요. 
@@ -139,7 +147,6 @@ Eureka와 Config Server는 모든 서비스가 연결되므로 그림에서 뺐�
 - Redis는 사용하지 않아요. 로그아웃 후에도 이미 발급된 Access 토큰은 만료될 때까지 유효해요.
 
 ### Gateway 경로 인증 정책
-
 
 회원가입·로그인·공개 조회는 Access 토큰 없이 호출할 수 있어요. 토큰 재발급에는 Refresh 토큰이 필요하고, 그 외 보호된 경로는 Access 토큰이 필요해요.
 
@@ -153,11 +160,12 @@ Eureka와 Config Server는 모든 서비스가 연결되므로 그림에서 뺐�
 | `GET /api/companies/{id}` | 공개 |
 | `GET /api/companies` | Access 토큰 필요 |
 | `/swagger-ui/**`, `/v3/api-docs/**` | 공개 |
-
+| ~~`POST /api/admin/collect/import`~~ | 원본에서 임시로 열어 둔 경로. 이번에 ADMIN 전용으로 닫아요 |
 
 `/api/admin/**`는 Gateway에서 `X-User-Role`이 `ADMIN`인지 확인하고, 아니면 403 `FORBIDDEN`을 돌려줘요. 오류 응답 모양(`code`, `message`, `field`)은 원본 규격을 그대로 따라요.
 
-서비스 간 내부 호출 경로(`/internal/**`)는 Gateway 라우트에 넣지 않아 외부에서 호출할 수 없게 해요.
+서비스 간 내부 호출 경로는 Gateway 라우트에 넣지 않아 외부에서 호출할 수 없게 해요.
+
 ## 5. 동기 통신 (OpenFeign)
 
 응답에 바로 필요한 값만 Feign으로 물어요. 목록 화면에서 글마다 한 번씩 부르지 않도록, 여러 id를 한 번에 보내는 일괄 조회 형태로 만들어요. 번호(①~⑦)는 [roles.md](roles.md)와 같아요.
