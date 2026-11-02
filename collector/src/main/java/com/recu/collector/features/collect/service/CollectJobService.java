@@ -30,8 +30,6 @@ public class CollectJobService {
   private static final DateTimeFormatter ID_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
 
   private static final String RUNNING = "RUNNING";
-  private static final String DONE = "DONE";
-  private static final String FAILED = "FAILED";
 
   private final WebCollectService webCollectService;
   private final ContentStub content;
@@ -105,15 +103,14 @@ public class CollectJobService {
       int saved =
           results.stream().filter(r -> r.saved() != null).mapToInt(r -> r.saved().newPosts()).sum();
 
-      entity.setStatus(DONE);
-      entity.setNewPostCount(saved);
-      entity.setFinishedAt(LocalDateTime.now(KST).withNano(0));
+      // 성공: DONE + 발행(저장)한 글 수 + 종료 시각
+      entity.markDone(saved, LocalDateTime.now(KST).withNano(0));
       repository.save(entity);
       log.info("웹 수집 끝 {} (새 글 {}편)", jobId, saved);
     } catch (Exception e) {
       log.error("웹 수집 중단 {}", jobId, e);
-      entity.setStatus(FAILED);
-      entity.setFinishedAt(LocalDateTime.now(KST).withNano(0));
+      // 실패: FAILED + 종료 시각 (newPostCount는 그대로)
+      entity.markFailed(LocalDateTime.now(KST).withNano(0));
       repository.save(entity);
     }
   }
@@ -137,5 +134,16 @@ public class CollectJobService {
         .findById(jobId)
         .map(this::toDto)
         .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND));
+  }
+
+  /** 재기동 후 남아 있는 RUNNING을 FAILED로 바꾼다. 안 바꾸면 새 수집을 시작하지 못한다. */
+  public void failStaleRunningJobs() {
+    LocalDateTime now = LocalDateTime.now(KST).withNano(0);
+    List<CollectJobEntity> stale = repository.findByStatus(RUNNING);
+    for (CollectJobEntity job : stale) {
+      job.markFailed(now);
+      repository.save(job);
+      log.warn("재기동으로 중단된 수집을 FAILED로 바꿉니다: {}", job.getJobId());
+    }
   }
 }

@@ -10,4 +10,6 @@ public interface CollectJobRepository extends JpaRepository<CollectJobEntity, St
   Optional<CollectJobEntity> findFirstByStatus(String status);
 
   List<CollectJobEntity> findTop20ByOrderByStartedAtDesc();
+
+  List<CollectJobEntity> findByStatus(String status);
 }

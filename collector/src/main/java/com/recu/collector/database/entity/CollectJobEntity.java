@@ -9,12 +9,10 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 @Entity
 @Table(name = "collect_job")
 @Getter
-@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -39,4 +37,16 @@ public class CollectJobEntity {
   @Builder.Default
   @Column(name = "new_post_count", nullable = false)
   private int newPostCount = 0;
+
+  // 상태 변경용 메서드
+  public void markDone(int newPostCount, LocalDateTime finishedAt) {
+    this.status = "DONE";
+    this.newPostCount = newPostCount;
+    this.finishedAt = finishedAt;
+  }
+
+  public void markFailed(LocalDateTime finishedAt) {
+    this.status = "FAILED";
+    this.finishedAt = finishedAt;
+  }
 }
