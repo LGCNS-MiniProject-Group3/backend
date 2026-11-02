@@ -5,11 +5,12 @@
 앱·Gateway는 포함하지 않습니다. `local` 프로필에서는 IDE로 서비스를 띄우고, 여기 인프라만 compose로 올립니다.
 
 서비스 이름 `mariadb`, `kafka`는 설정 저장소의 `application-dev.yml`과 같아야 합니다.
+지금 Kafka는 host(local)용 `localhost` advertised입니다. dev용 Kafka 리스너는 앱을 compose에 넣을 때 추가합니다.
 
 ## 준비
 
 1. 저장소 루트(`backend/`)에서 `.env.example`을 `.env`로 복사합니다.
-2. `.env`에 필요한 값을 채웁니다. (MARIADB_ROOT_PASSWORD 값은 팀 채널 등 비공개로 공유합니다. 이 README에는 적지 않습니다.)
+2. `.env`의 `MARIADB_ROOT_PASSWORD`는 각자 정합니다. 이 README에는 적지 않습니다.
 
 ## 기동
 

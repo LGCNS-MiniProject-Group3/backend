@@ -1,7 +1,8 @@
 -- 5번 담당
 -- DB 5개 + 서비스별 계정/권한
 -- 계정 이름 = config username (recu_user 등)
--- 로컬 서비스 비밀번호는 팀 합의 값 (아래 IDENTIFIED BY). 1번이 설정 저장소 cipher 에 동일 값 반영.
+-- 아래 IDENTIFIED BY 값은 로컬 전용 비밀번호다. RDS(prod)에서는 다른 비밀번호로 바꿔서 실행한다.
+-- 로컬 서비스 비밀번호는 팀 합의 값. 1번이 설정 저장소 cipher 에 동일 값 반영.
 -- 서비스 계정에는 데이터 권한만. CREATE/DROP/ALTER 없음 (code-convention)
 
 CREATE DATABASE IF NOT EXISTS recu_user

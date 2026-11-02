@@ -12,8 +12,6 @@ services:
       - "127.0.0.1:3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Set MARIADB_ROOT_PASSWORD in .env}
-      MYSQL_CHARACTER_SET_SERVER: utf8mb4
-      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
     volumes:
       - mariadb_data:/var/lib/mysql
       # compose 파일 기준 상대경로 → infra/db
