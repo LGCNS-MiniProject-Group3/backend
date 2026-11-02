@@ -34,7 +34,7 @@
 
 ### 원본 시스템
 
-- React(Vercel) → Spring Boot 단일 서버(Railway) → MariaDB., Gemini예요.
+- React(Vercel) → Spring Boot 단일 서버(Railway) → 외부 연동은 Google OAuth, Gemini예요.
 - Spring Boot 3.4.5, Java 17, JPA `ddl-auto`로 스키마 생성. 테이블 11개, API 17개.
 - 코드가 `features/` 아래 기능별 패키지(`user`, `tech`, `company`, `post`, `guide`, `bookmark`, `collect`)로 나뉘어 있어 서비스 경계를 잡기 쉬워요.
 - 엔티티는 `database/` 한 곳에 모여 있고, 다른 기능의 엔티티끼리 `@ManyToOne`으로 묶여 있어요. 분리 작업은 대부분 이 연결을 끊는 일이에요.
@@ -126,6 +126,9 @@ Eureka와 Config Server는 모든 서비스가 연결되므로 그림에서 뺐�
 
 오류 응답 본문은 공통 형식인 `{"code":"...","message":"...","field":"..."}`을 사용해요.
 
+
+- POST /api/auth/google은 MSA에서 제공하지 않으며, Google OAuth 로그인은 지원하지 않는다고 명시
+- 검증 표 추가: 이메일 필수·형식 확인·최대 100자, 비밀번호 필수·최소 8자·BCrypt 한도 72바이트, 이름 필수·최대 50자. 실패는 400 INVALID_INPUT과 해당 field로 응답
 ### 로그인과 토큰 저장
 
 - 회원가입은 `POST /api/auth/signup`으로 이메일·비밀번호·이름을 받아 처리해요. 
