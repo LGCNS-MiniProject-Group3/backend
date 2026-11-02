@@ -3,6 +3,7 @@ package com.recu.guide.features.guide.ctrl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.recu.common.kafka.KafkaEventPublisher;
+import com.recu.common.kafka.event.GuideCreatedEvent;
 import com.recu.guide.client.ContentClient;
 import com.recu.guide.client.UserClient;
 import com.recu.guide.client.dto.GuideInputResponseDTO;
@@ -69,7 +71,7 @@ class GuideControllerTest {
   }
 
   @Test
-  @DisplayName("처음 만들면 ④·⑤·AI를 차례로 불러 저장하고 cached=false")
+  @DisplayName("처음 만들면 ④·⑤·AI를 차례로 불러 저장하고 cached=false, C를 1번 발행")
   void createsNewGuide() throws Exception {
     when(userClient.getProfile(USER_ID)).thenReturn(profile(3));
     when(contentClient.getGuideInput(POST_ID)).thenReturn(postInput());
@@ -81,16 +83,17 @@ class GuideControllerTest {
         .andExpect(jsonPath("$.basis.careerYears").value(3))
         .andExpect(jsonPath("$.focusSections[0]").value(2));
     assertThat(guideRepository.count()).isEqualTo(1);
+    verify(kafkaEventPublisher).publishGuideCreated(new GuideCreatedEvent(USER_ID, POST_ID));
   }
 
   @Test
-  @DisplayName("같은 사람·글·프로필 버전의 저장본이 있으면 ⑤와 AI를 부르지 않고 cached=true")
+  @DisplayName("같은 사람·글·프로필 버전의 저장본이 있으면 ⑤·AI·C 발행 없이 cached=true")
   void reusesSavedGuide() throws Exception {
     when(userClient.getProfile(USER_ID)).thenReturn(profile(3));
     guideRepository.save(savedGuide(3));
 
     requestGuide().andExpect(status().isOk()).andExpect(jsonPath("$.cached").value(true));
-    verifyNoInteractions(contentClient, aiClient);
+    verifyNoInteractions(contentClient, aiClient, kafkaEventPublisher);
   }
 
   @Test
@@ -102,7 +105,7 @@ class GuideControllerTest {
     requestGuide()
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("PROFILE_REQUIRED"));
-    verifyNoInteractions(contentClient, aiClient);
+    verifyNoInteractions(contentClient, aiClient, kafkaEventPublisher);
   }
 
   @Test
@@ -115,7 +118,7 @@ class GuideControllerTest {
     requestGuide()
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("NOT_FOUND"));
-    verifyNoInteractions(aiClient);
+    verifyNoInteractions(aiClient, kafkaEventPublisher);
   }
 
   @Test
@@ -127,7 +130,7 @@ class GuideControllerTest {
     requestGuide()
         .andExpect(status().isBadGateway())
         .andExpect(jsonPath("$.code").value("UPSTREAM_ERROR"));
-    verifyNoInteractions(contentClient, aiClient);
+    verifyNoInteractions(contentClient, aiClient, kafkaEventPublisher);
   }
 
   @Test
@@ -139,7 +142,36 @@ class GuideControllerTest {
     requestGuide()
         .andExpect(status().isBadGateway())
         .andExpect(jsonPath("$.code").value("UPSTREAM_ERROR"));
-    verifyNoInteractions(contentClient, aiClient);
+    verifyNoInteractions(contentClient, aiClient, kafkaEventPublisher);
+  }
+
+  @Test
+  @DisplayName("C 발행이 나중에 실패해도 가이드는 저장되고 200")
+  void publishFailsLater() throws Exception {
+    givenNewGuide();
+    when(kafkaEventPublisher.publishGuideCreated(any()))
+        .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("Kafka 꺼짐")));
+
+    requestGuide().andExpect(status().isOk()).andExpect(jsonPath("$.cached").value(false));
+    assertThat(guideRepository.count()).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("C 발행을 시작하자마자 실패해도 가이드는 저장되고 200")
+  void publishFailsImmediately() throws Exception {
+    givenNewGuide();
+    when(kafkaEventPublisher.publishGuideCreated(any()))
+        .thenThrow(new IllegalStateException("직렬화 실패"));
+
+    requestGuide().andExpect(status().isOk()).andExpect(jsonPath("$.cached").value(false));
+    assertThat(guideRepository.count()).isEqualTo(1);
+  }
+
+  // ④⑤·AI가 모두 정상이라 새 가이드가 만들어지는 상황
+  private void givenNewGuide() {
+    when(userClient.getProfile(USER_ID)).thenReturn(profile(3));
+    when(contentClient.getGuideInput(POST_ID)).thenReturn(postInput());
+    when(aiClient.generate(anyString())).thenReturn(AI_ANSWER);
   }
 
   private ResultActions requestGuide() throws Exception {
