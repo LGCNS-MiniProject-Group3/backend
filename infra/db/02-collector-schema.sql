@@ -1,4 +1,6 @@
--- 5번 담당: collect_job (design.md 8장)
+-- 5번 담당: collect_job
+-- design.md 8장 · collector 엔티티 기준
+-- company_id 는 content 기업 번호만 보관 (크로스 DB FK 없음)
 USE recu_collector;
 
 CREATE TABLE IF NOT EXISTS collect_job (
