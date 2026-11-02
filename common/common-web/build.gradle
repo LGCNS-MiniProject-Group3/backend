@@ -8,6 +8,10 @@ dependencies {
     // Feign을 쓰는 서비스에서만 Feign 오류 처리·타임아웃이 켜진다
     compileOnly 'io.github.openfeign:feign-core'
 
+    // Spring Cloud Bus: Config Server의 /actuator/busrefresh 신호를 Kafka로 받아 설정을 다시 읽는다 (design.md 9장)
+    // 서비스가 갖고 있지 않은 라이브러리라 api로 넘겨준다. 테스트에서는 각 서비스가 끈다
+    api 'org.springframework.cloud:spring-cloud-starter-bus-kafka'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-web'
     testImplementation 'org.springframework.boot:spring-boot-starter-validation'
     testImplementation 'io.github.openfeign:feign-core'

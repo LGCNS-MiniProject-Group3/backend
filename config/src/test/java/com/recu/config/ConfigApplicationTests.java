@@ -18,7 +18,8 @@ import org.springframework.test.context.DynamicPropertySource;
 /** 설정 저장소 대신 임시 폴더(native)를 읽혀서, 프로필별 값과 /encrypt · '{cipher}' 풀기를 확인한다. GitHub 저장소·토큰 없이 돈다. */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = "spring.profiles.active=native")
+    // Bus는 실제 Kafka가 필요해서 끈다. busrefresh 는 로컬 compose 로 확인한다 (PR 확인 방법)
+    properties = {"spring.profiles.active=native", "spring.cloud.bus.enabled=false"})
 class ConfigApplicationTests {
 
   private static final String TEST_KEY = "test-only-encrypt-key-at-least-32-chars";
