@@ -8,11 +8,16 @@ import feign.Request;
 import feign.RetryableException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -29,6 +34,8 @@ class TestController {
 
   record NameRequest(@NotBlank String name) {}
 
+  record IdsRequest(List<Long> postIds) {}
+
   @GetMapping("/me")
   Long me(@CurrentUserId Long userId) {
     return userId;
@@ -41,6 +48,31 @@ class TestController {
 
   @PostMapping("/valid")
   void valid(@Valid @RequestBody NameRequest request) {}
+
+  @GetMapping("/posts/{postId}")
+  Long post(@PathVariable Long postId) {
+    return postId;
+  }
+
+  @GetMapping("/positive/{postId}")
+  Long positive(@PathVariable @Positive Long postId) {
+    return postId;
+  }
+
+  @PostMapping("/ids")
+  List<Long> ids(@RequestBody IdsRequest request) {
+    return request.postIds();
+  }
+
+  @GetMapping("/urls")
+  Long urls(@RequestParam Long companyId) {
+    return companyId;
+  }
+
+  @GetMapping("/trace")
+  String trace(@RequestHeader("X-Trace-Id") String traceId) {
+    return traceId;
+  }
 
   @GetMapping("/feign/error")
   void feignError() {

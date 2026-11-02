@@ -37,6 +37,12 @@ configure(subprojects.findAll { it.path != ':common' }) {
         }
     }
 
+    // 파라미터 이름을 클래스 파일에 남긴다. @PathVariable Long postId 처럼 이름을 생략해도 되고, 오류 응답의 field에 쓴다.
+    // 서비스는 Spring Boot 플러그인이 켜 주지만 common 모듈은 플러그인이 없어 여기서 같이 켠다.
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs.add('-parameters')
+    }
+
     configurations {
         compileOnly {
             extendsFrom annotationProcessor
