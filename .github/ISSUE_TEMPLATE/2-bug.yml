@@ -1,4 +1,4 @@
-name: 버그
+name: 버그 신고
 description: 동작이 잘못됐을 때
 title: "[서비스] "
 labels: ["type:fix"]
