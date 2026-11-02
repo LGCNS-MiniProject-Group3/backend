@@ -205,4 +205,4 @@ public interface UserClient {
 | Gateway 필터 | 토큰 없음 401, 일반 사용자의 `/api/admin/**` 403, 클라이언트가 보낸 `X-User-Id` 제거 | 1번 |
 
 - 테스트 이름은 한국어로 써도 돼요. `@DisplayName("이미 저장한 글을 다시 저장하면 409")`
-- 외부 서비스(Gemini, Google, 블로그 사이트)를 실제로 부르는 테스트는 기본 실행에서 빼요.
+- 외부 서비스(OpenAI, Google, 블로그 사이트)를 실제로 부르는 테스트는 기본 실행에서 빼요.

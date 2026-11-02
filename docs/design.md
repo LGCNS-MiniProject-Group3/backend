@@ -103,8 +103,8 @@ flowchart LR
   B --- DB[(bookmark DB)]
 
   U --> GO[Google OAuth]
-  G --> GE[Gemini]
-  CL --> GE
+  G --> AI[OpenAI]
+  CL --> AI
 ```
 
 Eureka와 Config Server는 모든 서비스가 연결되므로 그림에서 뺐어요. 서비스는 Eureka에 등록하고, Feign과 Gateway는 서비스 이름(`lb://content`)으로 상대를 찾아요.
@@ -154,7 +154,7 @@ Eureka와 Config Server는 모든 서비스가 연결되므로 그림에서 뺐�
 | ③ | user → content | `GET /internal/tech-tags?ids=…`<br>→ id, name 목록 | 프로필 저장 때 기술 번호 검증, 프로필 응답의 기술 이름 | `ProfileService`의 `TechTagRepository` | 3번 |
 | ④ | guide → user | `GET /internal/users/{userId}/profile`<br>→ 경력, 보유·관심 기술, 희망 직무, profileVersion | 가이드 재사용 키, AI 입력 | `GuideService`의 `profileService.getProfile` | 2번 |
 | ⑤ | guide → content | `GET /internal/posts/{postId}/guide-input`<br>→ 제목, 계열, 난이도, 구간 목록 | AI 입력 | `GuideSectionRepository`, `BlogPostRepository` | 3번 |
-| ⑥ | collector → content | `GET /internal/companies`<br>`GET /internal/posts/urls?companyId=`<br>→ 수집 대상 기업, 이미 저장된 글 url | 수집 대상 고르기, 기존 글을 걸러 Gemini 재분류 방지 | `PostIngestService`의 url 중복 확인 | 3번 |
+| ⑥ | collector → content | `GET /internal/companies`<br>`GET /internal/posts/urls?companyId=`<br>→ 수집 대상 기업, 이미 저장된 글 url | 수집 대상 고르기, 기존 글을 걸러 AI 재분류 방지 | `PostIngestService`의 url 중복 확인 | 3번 |
 | ⑦ | bookmark → content | `POST /internal/posts/summaries`<br>body: postIds → 카드 정보(제목, 기업, 계열, 요지, 기술, 발행일) | 저장한 글 목록, 저장 때 글 존재 확인(없으면 404) | `BookmarkService`의 `BlogPostRepository`, `findTags` | 3번 |
 
 > **순환 호출 주의.** content와 user가 서로 불러요(① 선호 조회, ③ 기술 이름 조회). 한 요청 안에서 서로를 다시 부르는 경로는 없어서 문제는 없지만, 새 호출을 추가할 때 고리가 생기지 않는지 확인해요.
@@ -285,12 +285,12 @@ sequenceDiagram
   participant G as guide
   participant U as user
   participant C as content
-  participant AI as Gemini
+  participant AI as OpenAI
   participant K as Kafka
   FE->>G: POST /api/posts/128/guide (X-User-Id: 12)
   G->>U: ④ GET /internal/users/12/profile
   U-->>G: 경력, 기술, 직무, profileVersion=3
-  G->>G: (user, post, v3, prompt v1) 저장본 조회
+  G->>G: (user, post, v3, prompt v2) 저장본 조회
   alt 저장본 있음
     G-->>FE: cached=true (AI 호출 없음)
   else 저장본 없음
@@ -307,7 +307,7 @@ sequenceDiagram
 ### 글 수집 `POST /api/admin/collect`
 
 1. collector가 요청을 받고 `collect_job`에 RUNNING으로 기록한 뒤 202와 `jobId`를 바로 돌려줘요(원본과 같음). 이미 도는 작업이 있으면 새로 시작하지 않고 그 작업의 `jobId`를 돌려줘요.
-2. 백그라운드에서 기업별로 RSS·사이트맵·API를 읽고, 구간을 나누고, Gemini로 분류해요.
+2. 백그라운드에서 기업별로 RSS·사이트맵·API를 읽고, 구간을 나누고, OpenAI로 분류해요.
 3. 이미 저장된 글을 다시 분류하지 않도록, 시작할 때 content에 기존 url 목록을 물어 걸러 내요(⑥).
 4. 글 1편이 끝날 때마다 A `recu.post.collected`를 발행해요. content가 받아서 저장해요.
 5. 파일 적재(`/api/admin/collect/import`)도 같은 메시지로 발행해요.
@@ -414,22 +414,43 @@ collect_job (
 ├─ gateway.yml                  # JWT 서명 키, CORS 출처 (라우트·permitAll 목록은 gateway 코드)
 ├─ user.yml                     # DB, Google client id
 ├─ content.yml
-├─ collector.yml                # Gemini 키, 분류 지시문 버전
-├─ guide.yml                    # Gemini 키, 가이드 지시문 버전
+├─ collector.yml                # OpenAI 키, 분류 모델 설정
+├─ guide.yml                    # OpenAI 키, 가이드 모델, 가이드 지시문 버전
 └─ bookmark.yml
 ```
+
+### AI 호출 설정
+
+가이드 생성(guide)과 글 분류(collector)는 원본의 Gemini 대신 OpenAI를 불러요. 두 서비스가 같은 방식으로 불러요.
+
+| 항목 | 값 |
+| --- | --- |
+| 호출 | `POST https://api.openai.com/v1/chat/completions`, `Authorization: Bearer <키>` |
+| 응답 형식 | `response_format: {"type": "json_object"}`. 원본 Gemini의 `responseMimeType: application/json`과 같은 역할이라, 지시문에 "JSON"이라는 말이 들어 있어야 해요 |
+| 모델 | `gpt-4o-mini` |
+| 실패 | 실패·시간 초과·형식 오류는 원본처럼 502 `AI_UNAVAILABLE`. 재시도는 429·5xx일 때 |
+
+| 설정 키 | 파일 | 값 |
+| --- | --- | --- |
+| `openai.api-key` | collector.yml, guide.yml | `{cipher}` |
+| `collect.classify.model` | collector.yml | `gpt-4o-mini` |
+| `guide.model` | guide.yml | `gpt-4o-mini`. 원본은 guide도 collector의 `collect.classify.model`을 읽었는데, 이번에 나눠요 |
+| `guide.prompt-version` | guide.yml | `v2`. 원본의 `gemini.prompt-version`(`v1`)에서 이름을 바꾸고 올려요. 모델이 바뀌어 옛 가이드를 다시 쓰지 않게 해요 |
+
+- 원본 글 402편은 Gemini로 분류된 결과를 그대로 써요. 새로 수집하는 글만 OpenAI로 분류해요.
+- `gemini.*` 키는 코드가 바뀐 뒤에 설정 저장소에서 지워요. 먼저 지우면 옛 코드가 뜨지 않아요.
 
 ### 비밀 값
 
 | 값 | 둘 곳 |
 | --- | --- |
-| DB 비밀번호, JWT 서명 키, Gemini 키, Google client id | 설정 저장소에 `{cipher}`로 암호화해서 저장 (선택 2번) |
+| DB 비밀번호, JWT 서명 키, OpenAI 키, Google client id | 설정 저장소에 `{cipher}`로 암호화해서 저장 (선택 2번) |
 | `ENCRYPT_KEY`(복호화 키), 설정 저장소 읽기 토큰 | 실행 환경의 `.env`에만 (로컬은 각자, 배포는 EC2) |
 | MariaDB root 비밀번호 (local·dev) | 각자 `.env` (DB 컨테이너가 Config Server보다 먼저 떠요) |
 | RDS 마스터 비밀번호 (prod) | EC2에 두지 않음. DB·계정을 처음 만들 때만 쓰고, 담당자(7번)가 비공개로 보관 |
 
 - 서비스는 비밀 값을 직접 갖지 않고, Config Server가 풀어서 내려준 값을 받아요.
-- 각 담당이 필요한 비밀 값(Google client id, Gemini 키 등)은 직접 넣지 않고 1번에게 전달해 암호화해서 넣어요.
+- 각 담당이 필요한 비밀 값(Google client id, OpenAI 키 등)은 직접 넣지 않고 1번에게 전달해 암호화해서 넣어요.
 - `ENCRYPT_KEY`와 저장소 토큰은 팀 채널 같은 비공개 경로로만 주고받아요. 1번이 팀원(로컬 실행)과 7번(EC2 `.env`, GitHub Secrets)에게 전달해요. 이슈·PR·커밋·공개 문서에는 적지 않아요.
 - `ENCRYPT_KEY`는 한 번 정하면 바꾸지 않아요. 바꾸면 설정 저장소의 `{cipher}` 값을 모두 다시 암호화해야 해요. 키가 새어 나가면 1번이 새 키로 다시 암호화하고 팀에 새 키를 전달해요.
 - 설정을 고친 뒤에는 Spring Cloud Bus로 한 번에 반영해요(아래).
@@ -536,7 +557,7 @@ flowchart LR
 ### 공통 코드
 
 - [ ] `commons/exception`(`ErrorCode`, `BusinessException`)과 `GlobalExceptionHandler` → `common` 모듈
-- [ ] (선택) Gemini 재시도(`GeminiGuideClient`, `PostClassifier`의 `Thread::sleep` 직접 구현) → Resilience4j Retry
+- [ ] (선택) AI 호출 재시도(guide·collector의 OpenAI 호출에 있는 `Thread::sleep` 직접 구현) → Resilience4j Retry
 
 ## 12. 요구사항 대응
 
@@ -592,6 +613,7 @@ flowchart LR
 | 선택 요구사항 (확정) | 1 Spring Cloud Bus, 2 설정 암호화, 4 클라우드 실배포. 나머지는 요구사항 명세서에서 결정 |
 | 로그인 · 토큰 | Google OAuth 유지, Refresh 토큰은 user DB에 저장, Redis 안 씀 (4장) |
 | 서비스 수 | 5개 (collector 분리) |
+| AI | 원본의 Gemini → OpenAI `gpt-4o-mini`. Google AI Studio 키 발급이 어려워 바꿈. 팀 키 1개를 설정 저장소에 암호화 (9장 AI 호출 설정) |
 | 저장소 구성 | 백엔드 저장소 하나에 서비스별 폴더 |
 | 공통 코드 | `common` 모듈 (웹: 1번, Kafka: 6번) |
 
@@ -602,4 +624,3 @@ flowchart LR
 | 관리자 계정 만드는 법 | 초기 SQL / 별도 API | 관리자로 쓸 구글 계정으로 한 번 로그인한 뒤 SQL로 `role`을 `ADMIN`으로 바꿈. 새 API는 만들지 않음 |
 | AWS 계정 | 배정 예정 | 받으면 IAM 역할(OIDC, EC2)과 ECR 저장소를 누가 만들지 정함 |
 | EC2 배포 명령 방식 | SSM Run Command / SSH | SSM Run Command (10장) |
-| Gemini 키 | 무료 등급 유지 / 유료·예비 키 | 원본 팀이 1차 시연 때 무료 등급에서 503 오류를 겪었으므로 시연용 예비 키를 미리 준비 |
