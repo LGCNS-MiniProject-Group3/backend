@@ -1,9 +1,11 @@
 package com.recu.common.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -11,14 +13,18 @@ import feign.Request;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@ExtendWith(OutputCaptureExtension.class)
 class CommonWebAutoConfigurationTest {
 
   @Autowired MockMvc mockMvc;
@@ -71,6 +77,99 @@ class CommonWebAutoConfigurationTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
         .andExpect(jsonPath("$.field").value("name"));
+  }
+
+  @Test
+  @DisplayName("경로 값의 타입이 다르면 400 INVALID_INPUT과 파라미터 이름")
+  void pathTypeMismatch() throws Exception {
+    mockMvc
+        .perform(get("/posts/abc"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+        .andExpect(jsonPath("$.message").value("입력값이 올바르지 않습니다."))
+        .andExpect(jsonPath("$.field").value("postId"));
+  }
+
+  @Test
+  @DisplayName("컨트롤러 인자 검증(@Positive)에 실패하면 400 INVALID_INPUT")
+  void methodValidation() throws Exception {
+    mockMvc
+        .perform(get("/positive/-1"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+        .andExpect(jsonPath("$.field").value("postId"));
+  }
+
+  @Test
+  @DisplayName("본문이 JSON이 아니면 400 INVALID_INPUT, field는 없음")
+  void brokenJson() throws Exception {
+    mockMvc
+        .perform(post("/ids").contentType(MediaType.APPLICATION_JSON).content("{postIds:"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+        .andExpect(jsonPath("$.field").doesNotExist());
+  }
+
+  @Test
+  @DisplayName("JSON 필드 타입이 다르면 400 INVALID_INPUT과 필드 이름")
+  void jsonFieldTypeMismatch() throws Exception {
+    mockMvc
+        .perform(
+            post("/ids").contentType(MediaType.APPLICATION_JSON).content("{\"postIds\":[\"a\"]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+        .andExpect(jsonPath("$.field").value("postIds"));
+  }
+
+  @Test
+  @DisplayName("필수 쿼리 파라미터가 없으면 400 INVALID_INPUT과 파라미터 이름")
+  void missingParameter() throws Exception {
+    mockMvc
+        .perform(get("/urls"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+        .andExpect(jsonPath("$.field").value("companyId"));
+  }
+
+  @Test
+  @DisplayName("필수 헤더가 없으면 400 INVALID_INPUT과 헤더 이름")
+  void missingHeaderValue() throws Exception {
+    mockMvc
+        .perform(get("/trace"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+        .andExpect(jsonPath("$.field").value("X-Trace-Id"));
+  }
+
+  @Test
+  @DisplayName("없는 경로는 404 NOT_FOUND")
+  void noSuchPath() throws Exception {
+    mockMvc
+        .perform(get("/nowhere"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("NOT_FOUND"))
+        .andExpect(jsonPath("$.field").doesNotExist());
+  }
+
+  @Test
+  @DisplayName("경로에 없는 메서드는 405 METHOD_NOT_ALLOWED와 Allow 헤더")
+  void methodNotAllowed() throws Exception {
+    mockMvc
+        .perform(delete("/me"))
+        .andExpect(status().isMethodNotAllowed())
+        .andExpect(header().string("Allow", "GET"))
+        .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"))
+        .andExpect(jsonPath("$.message").value("지원하지 않는 요청 방식입니다."));
+  }
+
+  @Test
+  @DisplayName("잘못된 요청은 서버 오류 로그를 남기지 않는다")
+  void badRequestIsNotLoggedAsError(CapturedOutput output) throws Exception {
+    mockMvc.perform(get("/posts/abc")).andExpect(status().isBadRequest());
+    mockMvc.perform(get("/nowhere")).andExpect(status().isNotFound());
+    mockMvc.perform(delete("/me")).andExpect(status().isMethodNotAllowed());
+
+    assertThat(output).doesNotContain("Unhandled exception");
   }
 
   @Test
