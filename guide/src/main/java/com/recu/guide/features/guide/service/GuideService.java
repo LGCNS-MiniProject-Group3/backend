@@ -5,12 +5,19 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recu.common.web.error.BusinessException;
+import com.recu.common.web.error.CommonErrorCode;
+import com.recu.guide.client.ContentClient;
+import com.recu.guide.client.UserClient;
+import com.recu.guide.client.dto.GuideInputResponseDTO;
+import com.recu.guide.client.dto.GuideInputResponseDTO.Section;
+import com.recu.guide.client.dto.UserProfileResponseDTO;
 import com.recu.guide.database.entity.AiGuideEntity;
 import com.recu.guide.error.GuideErrorCode;
 import com.recu.guide.features.guide.domain.dto.GuideResponseDTO;
 import com.recu.guide.features.guide.domain.dto.GuideResponseDTO.Basis;
 import com.recu.guide.features.guide.domain.dto.GuideResponseDTO.SectionBadge;
 import com.recu.guide.features.guide.repository.GuideRepository;
+import feign.FeignException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -32,44 +39,50 @@ public class GuideService {
   private static final Set<String> BADGES = Set.of("KEY", "LIGHT", "SKIP", "REF");
 
   private final GuideRepository guideRepository;
+  private final UserClient userClient;
+  private final ContentClient contentClient;
   private final OpenAiGuideClient aiClient;
   private final ObjectMapper objectMapper;
   private final String promptVersion;
 
   public GuideService(
       GuideRepository guideRepository,
+      UserClient userClient,
+      ContentClient contentClient,
       OpenAiGuideClient aiClient,
       ObjectMapper objectMapper,
       @Value("${guide.prompt-version}") String promptVersion) {
     this.guideRepository = guideRepository;
+    this.userClient = userClient;
+    this.contentClient = contentClient;
     this.aiClient = aiClient;
     this.objectMapper = objectMapper;
     this.promptVersion = promptVersion;
   }
 
   public GuideResponseDTO generateGuide(Long userId, Long postId) {
-    Profile profile = profile(userId);
+    UserProfileResponseDTO profile = profile(userId);
     if (profile.careerYears() == null) {
       throw new BusinessException(GuideErrorCode.PROFILE_REQUIRED);
     }
 
-    GuideInput post = guideInput(postId);
-
+    // 저장된 가이드가 있으면 글 정보(⑤)와 AI 없이 돌려준다 (design.md 7장)
     return guideRepository
         .findCached(userId, postId, profile.profileVersion(), promptVersion)
         .map(guide -> response(guide, profile, true))
-        .orElseGet(() -> generate(profile, post));
+        .orElseGet(() -> generate(userId, postId, profile));
   }
 
-  private GuideResponseDTO generate(Profile profile, GuideInput post) {
+  private GuideResponseDTO generate(Long userId, Long postId, UserProfileResponseDTO profile) {
+    GuideInputResponseDTO post = guideInput(postId);
     List<Section> sections = post.sections();
     GeneratedGuide generated =
         parseAndValidate(callAi(buildPrompt(profile, post, sections)), sections.size());
 
     AiGuideEntity guide =
         AiGuideEntity.builder()
-            .userId(profile.userId())
-            .blogPostId(post.postId())
+            .userId(userId)
+            .blogPostId(postId)
             .profile_version(profile.profileVersion())
             .prompt_version(promptVersion)
             .focus_sections(writeJson(generated.focusSections()))
@@ -84,7 +97,7 @@ public class GuideService {
       return response(guideRepository.save(guide), profile, false);
     } catch (DataIntegrityViolationException exception) {
       return guideRepository
-          .findCached(profile.userId(), post.postId(), profile.profileVersion(), promptVersion)
+          .findCached(userId, postId, profile.profileVersion(), promptVersion)
           .map(saved -> response(saved, profile, true))
           .orElseThrow(this::aiUnavailable);
     }
@@ -161,7 +174,8 @@ public class GuideService {
     }
   }
 
-  private GuideResponseDTO response(AiGuideEntity guide, Profile profile, boolean cached) {
+  private GuideResponseDTO response(
+      AiGuideEntity guide, UserProfileResponseDTO profile, boolean cached) {
     return new GuideResponseDTO(
         guide.getAi_guide_id(),
         cached,
@@ -173,11 +187,12 @@ public class GuideService {
         guide.getSection3_text());
   }
 
-  private Basis basis(Profile profile) {
+  private Basis basis(UserProfileResponseDTO profile) {
     return new Basis(profile.careerYears(), profile.haveSkills(), profile.wantSkills());
   }
 
-  private String buildPrompt(Profile profile, GuideInput post, List<Section> sections) {
+  private String buildPrompt(
+      UserProfileResponseDTO profile, GuideInputResponseDTO post, List<Section> sections) {
     StringBuilder input =
         new StringBuilder(loadPrompt())
             .append("\n\n[프로필]\n경력 연차: ")
@@ -251,33 +266,37 @@ public class GuideService {
       String section2Text,
       String section3Text) {}
 
-  // ---- 분리 이식 때 둔 대역. 담당 작업에서 Feign으로 바꾼다 ----
-
-  /** ④ 응답 모양 (docs/design.md 5장): 경력, 보유·관심 기술, 희망 직무, 프로필 버전. */
-  record Profile(
-      Long userId,
-      Integer careerYears,
-      List<String> jobFields,
-      List<String> haveSkills,
-      List<String> wantSkills,
-      Integer profileVersion) {}
-
-  /** ⑤ 응답 모양 (docs/design.md 5장): 제목, 계열, 난이도, 구간 목록. */
-  record GuideInput(
-      Long postId, String title, String field, String level, List<Section> sections) {}
-
-  record Section(String heading, String contentText) {}
-
-  // TODO(④): user의 GET /internal/users/{userId}/profile 로 묻는다.
-  //  원본: profileService.getProfile(userId) (같은 서버의 user 기능 직접 호출)
-  private Profile profile(Long userId) {
-    throw new UnsupportedOperationException("TODO(④): 프로필 조회 미구현");
+  // ④ 응답이 약속과 다르면 user 쪽 문제로 보고 502 (content가 ①을 받을 때와 같은 처리).
+  // careerYears가 null인 것은 프로필을 아직 등록하지 않은 경우라 여기서 막지 않는다 (호출한 쪽에서 400)
+  private UserProfileResponseDTO profile(Long userId) {
+    UserProfileResponseDTO profile = userClient.getProfile(userId);
+    if (profile == null || profile.profileVersion() == null) {
+      throw new BusinessException(CommonErrorCode.UPSTREAM_ERROR);
+    }
+    if (profile.careerYears() != null && hasMissingList(profile)) {
+      throw new BusinessException(CommonErrorCode.UPSTREAM_ERROR);
+    }
+    return profile;
   }
 
-  // TODO(⑤): content의 GET /internal/posts/{postId}/guide-input 으로 묻는다. 없는 글이면 404 NOT_FOUND.
-  //  원본: postRepository.findById(postId), sectionRepository.findByPostId(postId)
-  // (blog_post·blog_post_section 표 직접 조회)
-  private GuideInput guideInput(Long postId) {
-    throw new UnsupportedOperationException("TODO(⑤): 글 정보 조회 미구현");
+  // 프로필을 등록한 사람인데 직무·기술 목록이 비어(null) 오면 AI 입력을 만들 수 없다
+  private static boolean hasMissingList(UserProfileResponseDTO profile) {
+    return profile.jobFields() == null
+        || profile.haveSkills() == null
+        || profile.wantSkills() == null;
+  }
+
+  // common-web은 모든 Feign 실패를 502로 바꾼다. 없는 글(⑤ 404)만 여기서 404로 바꿔 원본 API와 맞춘다
+  private GuideInputResponseDTO guideInput(Long postId) {
+    GuideInputResponseDTO post;
+    try {
+      post = contentClient.getGuideInput(postId);
+    } catch (FeignException.NotFound exception) {
+      throw new BusinessException(CommonErrorCode.NOT_FOUND);
+    }
+    if (post == null || post.sections() == null) {
+      throw new BusinessException(CommonErrorCode.UPSTREAM_ERROR);
+    }
+    return post;
   }
 }
