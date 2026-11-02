@@ -1,7 +1,7 @@
 package com.recu.bookmark.features.bookmark.domain.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -10,6 +10,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
+// 추가 응답은 {bookmarkId, postId, createdAt}, 목록 응답은 카드 필드만 (reference/api-spec.md 4.11·4.12)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @Builder
 @Getter
 @ToString
@@ -30,5 +32,5 @@ public class BookmarkResponseDTO {
   private OffsetDateTime savedAt;
   private Boolean hasGuide;
 
-  private LocalDateTime createdAt;
+  private OffsetDateTime createdAt;
 }
