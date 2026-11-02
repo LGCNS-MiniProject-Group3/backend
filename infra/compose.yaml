@@ -9,7 +9,7 @@ services:
     image: mariadb:11.4
     container_name: recu-mariadb
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Set MARIADB_ROOT_PASSWORD in .env}
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
