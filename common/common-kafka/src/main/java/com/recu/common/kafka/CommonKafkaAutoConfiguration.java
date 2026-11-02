@@ -52,6 +52,10 @@ public class CommonKafkaAutoConfiguration {
   // 브로커로 가는 크기는 압축으로 줄인다. 브로커 한도(기본 1MB)는 바꾸지 않는다
   static final String COMPRESSION_TYPE = "lz4";
 
+  // 발행할 때 토픽 정보나 보내기 버퍼 자리를 기다리는 최대 시간. Kafka가 꺼져 있으면 요청이 이만큼 멈춘다.
+  // 기본값 60초는 응답이 멈춘 것처럼 보여서 15초로 줄인다
+  static final long MAX_BLOCK_MS = 15_000;
+
   @Bean
   @ConditionalOnMissingBean
   public ProducerFactory<String, Object> kafkaProducerFactory(
@@ -60,6 +64,7 @@ public class CommonKafkaAutoConfiguration {
     config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaProperties.getBootstrapServers());
     config.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, COMPRESSION_TYPE);
     config.put(ProducerConfig.MAX_REQUEST_SIZE_CONFIG, MAX_REQUEST_SIZE);
+    config.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, MAX_BLOCK_MS);
     // 받는 쪽이 보낸 쪽 클래스 이름에 묶이지 않도록 타입 정보 헤더를 싣지 않는다
     JsonSerializer<Object> valueSerializer = new JsonSerializer<Object>(objectMapper).noTypeInfo();
     return new DefaultKafkaProducerFactory<>(config, new StringSerializer(), valueSerializer);
