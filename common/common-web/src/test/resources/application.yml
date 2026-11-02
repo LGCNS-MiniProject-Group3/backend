@@ -1,0 +1,5 @@
+# common-web 테스트용. Bus 의존성이 함께 들어오지만 Kafka 없이 돌도록 끈다
+spring:
+  cloud:
+    bus:
+      enabled: false
