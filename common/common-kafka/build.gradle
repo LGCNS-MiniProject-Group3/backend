@@ -11,4 +11,8 @@ dependencies {
     compileOnly 'org.springframework.boot:spring-boot-autoconfigure'
     // 메시지 JSON 변환. 서비스는 Spring Boot가 만든 ObjectMapper를 이미 갖고 있어서 compileOnly로 둔다
     compileOnly 'com.fasterxml.jackson.core:jackson-databind'
+
+    // 테스트: 서비스처럼 Spring Boot ObjectMapper가 있는 앱을 띄우고, 내장 Kafka(@EmbeddedKafka)로 주고받는다
+    testImplementation 'org.springframework.boot:spring-boot-starter-json'
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
 }

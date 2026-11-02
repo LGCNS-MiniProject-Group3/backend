@@ -1,0 +1,6 @@
+# common-kafka 테스트용. @EmbeddedKafka가 띄운 내장 Kafka 주소를 쓴다
+spring:
+  application:
+    name: common-kafka-test
+  kafka:
+    bootstrap-servers: ${spring.embedded.kafka.brokers}
