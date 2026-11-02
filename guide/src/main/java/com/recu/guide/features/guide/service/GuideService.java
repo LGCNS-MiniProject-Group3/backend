@@ -17,6 +17,7 @@ import com.recu.guide.features.guide.domain.dto.GuideResponseDTO;
 import com.recu.guide.features.guide.domain.dto.GuideResponseDTO.Basis;
 import com.recu.guide.features.guide.domain.dto.GuideResponseDTO.SectionBadge;
 import com.recu.guide.features.guide.repository.GuideRepository;
+import com.recu.guide.messaging.GuideCreatedPublisher;
 import feign.FeignException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -42,6 +43,7 @@ public class GuideService {
   private final UserClient userClient;
   private final ContentClient contentClient;
   private final OpenAiGuideClient aiClient;
+  private final GuideCreatedPublisher guideCreatedPublisher;
   private final ObjectMapper objectMapper;
   private final String promptVersion;
 
@@ -50,12 +52,14 @@ public class GuideService {
       UserClient userClient,
       ContentClient contentClient,
       OpenAiGuideClient aiClient,
+      GuideCreatedPublisher guideCreatedPublisher,
       ObjectMapper objectMapper,
       @Value("${guide.prompt-version}") String promptVersion) {
     this.guideRepository = guideRepository;
     this.userClient = userClient;
     this.contentClient = contentClient;
     this.aiClient = aiClient;
+    this.guideCreatedPublisher = guideCreatedPublisher;
     this.objectMapper = objectMapper;
     this.promptVersion = promptVersion;
   }
@@ -93,14 +97,21 @@ public class GuideService {
             .created_at(LocalDateTime.now())
             .build();
 
+    AiGuideEntity saved;
     try {
-      return response(guideRepository.save(guide), profile, false);
+      saved = guideRepository.save(guide);
     } catch (DataIntegrityViolationException exception) {
+      // 같은 가이드를 동시에 저장하려다 진 쪽. C는 먼저 저장한 요청이 보내므로 여기서는 보내지 않는다
       return guideRepository
           .findCached(userId, postId, profile.profileVersion(), promptVersion)
-          .map(saved -> response(saved, profile, true))
+          .map(existing -> response(existing, profile, true))
           .orElseThrow(this::aiUnavailable);
     }
+
+    // 저장이 확정된 뒤에 보낸다 (design.md 6장).
+    // 이 서비스는 트랜잭션을 따로 열지 않아 save()가 끝나면 이미 커밋된 상태다
+    guideCreatedPublisher.publish(userId, postId);
+    return response(saved, profile, false);
   }
 
   private String callAi(String prompt) {

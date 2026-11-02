@@ -1,6 +1,7 @@
 package com.recu.guide.features.guide.ctrl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -8,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.recu.common.kafka.KafkaEventPublisher;
 import com.recu.guide.client.ContentClient;
 import com.recu.guide.client.UserClient;
 import com.recu.guide.client.dto.GuideInputResponseDTO;
@@ -22,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -55,10 +58,14 @@ class GuideControllerTest {
   @MockitoBean UserClient userClient;
   @MockitoBean ContentClient contentClient;
   @MockitoBean OpenAiGuideClient aiClient;
+  @MockitoBean KafkaEventPublisher kafkaEventPublisher;
 
   @BeforeEach
   void setUp() {
     guideRepository.deleteAll();
+    // 진짜 Kafka 대신 보내기가 바로 끝난 것으로 둔다
+    when(kafkaEventPublisher.publishGuideCreated(any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
   }
 
   @Test
