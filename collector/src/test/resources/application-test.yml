@@ -8,5 +8,5 @@ eureka:
   client:
     enabled: false
 
-gemini:
+openai:
   api-key: test-key
