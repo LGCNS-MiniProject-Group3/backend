@@ -1,12 +1,16 @@
 package com.recu.collector.features.collect.ctrl;
 
+import com.recu.collector.features.collect.domain.dto.CollectJobResponseDTO;
 import com.recu.collector.features.collect.service.CollectJobService;
 import com.recu.collector.features.collect.service.ContentStub;
 import com.recu.collector.features.collect.service.PostImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -40,7 +44,7 @@ public class AdminCollectController {
       description =
           "기업 블로그에서 12개월 안 글을 받아 AI 1차 분류를 매기고 표에 넣는다. 오래 걸려서 바로 202 를 돌려주고 뒤에서 돈다. "
               + "이미 있는 글은 url 로 걸러 AI 를 다시 부르지 않는다. 바디를 생략하면 전체 기업을 받는다. ADMIN 만 부른다.")
-  public ResponseEntity<CollectJobService.Job> collectFromWeb(
+  public ResponseEntity<CollectJobResponseDTO> collectFromWeb(
       @RequestBody(required = false) CollectRequest request) {
     Long companyId = request == null ? null : request.companyId();
     return ResponseEntity.status(HttpStatus.ACCEPTED).body(jobService.start(companyId));
@@ -55,5 +59,17 @@ public class AdminCollectController {
               + "이미 있는 글은 url 로 걸러내므로 여러 번 불러도 행이 늘지 않는다.")
   public ResponseEntity<ContentStub.IngestResult> importFromFiles() {
     return ResponseEntity.ok(importService.importFromFiles());
+  }
+
+  @GetMapping("/jobs")
+  @Operation(summary = "수집 작업 목록", description = "최신순 최대 20개")
+  public List<CollectJobResponseDTO> listJobs() {
+    return jobService.listRecent();
+  }
+
+  @GetMapping("/jobs/{jobId}")
+  @Operation(summary = "수집 작업 단건")
+  public CollectJobResponseDTO getJob(@PathVariable String jobId) {
+    return jobService.get(jobId);
   }
 }
