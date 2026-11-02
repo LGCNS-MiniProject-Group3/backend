@@ -7,6 +7,7 @@ import com.recu.content.features.tech.domain.dto.TechResponseDTO;
 import com.recu.content.features.tech.domain.dto.TechResponseDTO.TechTagDTO;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -52,7 +53,7 @@ public class TechService {
   public List<InternalTechResponseDTO> getInternalTechTags(List<Long> ids) {
     var found =
         techTagRepository.findAllById(ids).stream()
-            .collect(java.util.stream.Collectors.toMap(TechTagEntity::getTech_tag_id, t -> t));
+            .collect(Collectors.toMap(TechTagEntity::getTech_tag_id, t -> t));
     return ids.stream()
         .distinct()
         .filter(found::containsKey)

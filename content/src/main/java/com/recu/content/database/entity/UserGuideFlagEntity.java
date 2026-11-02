@@ -8,7 +8,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** V1 read projection. Role 4 owns event-driven inserts and deletes. No V2 columns. */
+/** V1 가이드 표시 사본. 이벤트에 따른 추가와 삭제는 4번 담당자가 구현한다. */
 @Entity
 @Table(name = "user_guide_flag")
 @Getter

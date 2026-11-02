@@ -43,7 +43,7 @@ public class InternalPostService {
 
   public List<String> getCollectedUrls(Long companyId) {
     if (!companies.existsById(companyId)) throw new BusinessException(CommonErrorCode.NOT_FOUND);
-    // Already collected non-tech rows must not be reclassified either.
+    // 비기술 글도 이미 수집한 URL에 포함해 재수집과 재분류를 방지한다.
     return posts.findUrlsByCompanyId(companyId);
   }
 

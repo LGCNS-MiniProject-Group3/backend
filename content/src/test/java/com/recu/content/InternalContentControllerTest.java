@@ -1,15 +1,21 @@
 package com.recu.content;
 
-import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.recu.common.web.CommonWebAutoConfiguration;
 import com.recu.content.features.company.ctrl.InternalCompanyController;
 import com.recu.content.features.company.domain.dto.CollectionCompanyResponseDTO;
 import com.recu.content.features.company.service.CompanyService;
 import com.recu.content.features.post.ctrl.InternalPostController;
-import com.recu.content.features.post.domain.dto.InternalPostResponseDTO.*;
+import com.recu.content.features.post.domain.dto.InternalPostResponseDTO.GuideInput;
+import com.recu.content.features.post.domain.dto.InternalPostResponseDTO.Section;
+import com.recu.content.features.post.domain.dto.InternalPostResponseDTO.Summary;
 import com.recu.content.features.post.service.InternalPostService;
 import com.recu.content.features.tech.ctrl.InternalTechController;
 import com.recu.content.features.tech.domain.dto.InternalTechResponseDTO;

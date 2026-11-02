@@ -3,14 +3,26 @@ package com.recu.content;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.recu.content.database.entity.*;
+import com.recu.content.database.entity.BlogPostEntity;
+import com.recu.content.database.entity.BlogPostSectionEntity;
+import com.recu.content.database.entity.BlogPostTagEntity;
+import com.recu.content.database.entity.BlogPostTagPk;
 import com.recu.content.database.entity.CompanyEntity;
 import com.recu.content.database.entity.TechTagEntity;
-import com.recu.content.database.repository.*;
+import com.recu.content.database.entity.UserGuideFlagEntity;
+import com.recu.content.database.entity.UserGuideFlagPk;
+import com.recu.content.database.repository.BlogPostCategoryRepository;
+import com.recu.content.database.repository.BlogPostRepository;
+import com.recu.content.database.repository.BlogPostSectionRepository;
+import com.recu.content.database.repository.BlogPostTagRepository;
+import com.recu.content.database.repository.CompanyRepository;
+import com.recu.content.database.repository.TechTagRepository;
+import com.recu.content.database.repository.UserGuideFlagRepository;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import jakarta.persistence.EntityManager;
@@ -25,7 +37,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.*;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,7 +51,9 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = "spring.jpa.open-in-view=false")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class ContentApiIntegrationTest {
@@ -240,7 +257,7 @@ class ContentApiIntegrationTest {
     Set<String> tables =
         entityManager.getMetamodel().getEntities().stream()
             .map(EntityType::getName)
-            .collect(java.util.stream.Collectors.toSet());
+            .collect(Collectors.toSet());
     assertThat(tables)
         .hasSize(7)
         .noneMatch(
@@ -349,6 +366,15 @@ class ContentApiIntegrationTest {
   @Test
   void userOutageIsNotSilentlyTreatedAsAnEmptyProfile() throws Exception {
     USER_STATUS.set(503);
+    USER_BODY = "{}";
+    mvc.perform(get("/api/companies").header("X-User-Id", "12"))
+        .andExpect(status().isBadGateway())
+        .andExpect(jsonPath("$.code").value("UPSTREAM_ERROR"));
+  }
+
+  @Test
+  void userNotFoundUsesCurrentUpstreamErrorContract() throws Exception {
+    USER_STATUS.set(404);
     USER_BODY = "{}";
     mvc.perform(get("/api/companies").header("X-User-Id", "12"))
         .andExpect(status().isBadGateway())

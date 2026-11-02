@@ -1,12 +1,22 @@
 package com.recu.content;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import com.recu.common.web.error.BusinessException;
 import com.recu.common.web.error.CommonErrorCode;
-import com.recu.content.client.*;
-import com.recu.content.client.dto.*;
+import com.recu.content.client.BookmarkClient;
+import com.recu.content.client.ContentBookmarkLookup;
+import com.recu.content.client.ContentUserPreference;
+import com.recu.content.client.UserClient;
+import com.recu.content.client.dto.BookmarkLookupRequestDTO;
+import com.recu.content.client.dto.UserPreferenceResponseDTO;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

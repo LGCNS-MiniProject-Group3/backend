@@ -1,8 +1,8 @@
 package com.recu.content.features.tech.ctrl;
 
-import com.recu.content.features.post.domain.dto.ContentQueryParameters;
 import com.recu.content.features.tech.domain.dto.InternalTechResponseDTO;
 import com.recu.content.features.tech.service.TechService;
+import com.recu.content.support.ContentQueryParameters;
 import io.swagger.v3.oas.annotations.Operation;
 import java.util.List;
 import lombok.RequiredArgsConstructor;

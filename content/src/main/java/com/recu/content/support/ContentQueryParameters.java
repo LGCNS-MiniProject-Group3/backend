@@ -1,4 +1,4 @@
-package com.recu.content.features.post.domain.dto;
+package com.recu.content.support;
 
 import com.recu.common.web.error.BusinessException;
 import com.recu.common.web.error.CommonErrorCode;

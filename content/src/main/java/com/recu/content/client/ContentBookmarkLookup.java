@@ -23,13 +23,13 @@ public class ContentBookmarkLookup {
       if (result == null
           || result.stream().anyMatch(Objects::isNull)
           || !new HashSet<>(postIds).containsAll(result)) {
-        log.warn("Bookmark returned an invalid lookup result; using unsaved state");
+        log.warn("북마크 조회 응답이 올바르지 않아 저장 표시를 비활성화합니다");
         return Set.of();
       }
       return new HashSet<>(result);
     } catch (FeignException exception) {
-      // Only lookup ② is optional; no writes or other downstream failures are hidden here.
-      log.warn("Bookmark lookup unavailable; using unsaved state, status={}", exception.status());
+      // 설계에서 선택 값으로 정한 북마크 조회 ②에만 대체 응답을 적용한다.
+      log.warn("북마크 조회에 실패해 저장 표시를 비활성화합니다. status={}", exception.status());
       return Set.of();
     }
   }

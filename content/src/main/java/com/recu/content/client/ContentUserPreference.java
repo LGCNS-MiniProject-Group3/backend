@@ -3,6 +3,7 @@ package com.recu.content.client;
 import com.recu.common.web.error.BusinessException;
 import com.recu.common.web.error.CommonErrorCode;
 import com.recu.content.client.dto.UserPreferenceResponseDTO;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -17,7 +18,7 @@ public class ContentUserPreference {
       throw new BusinessException(CommonErrorCode.UPSTREAM_ERROR);
     }
     if (result.profileVersion() == 0) {
-      return new UserPreferenceResponseDTO(java.util.List.of(), java.util.List.of(), 0);
+      return new UserPreferenceResponseDTO(List.of(), List.of(), 0);
     }
     if (result.jobFields() == null
         || result.wantSkillNames() == null

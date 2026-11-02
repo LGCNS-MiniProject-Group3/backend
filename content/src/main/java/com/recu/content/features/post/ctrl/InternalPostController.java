@@ -1,15 +1,21 @@
 package com.recu.content.features.post.ctrl;
 
-import com.recu.content.features.post.domain.dto.ContentQueryParameters;
 import com.recu.content.features.post.domain.dto.InternalPostResponseDTO.GuideInput;
 import com.recu.content.features.post.domain.dto.InternalPostResponseDTO.Summary;
 import com.recu.content.features.post.domain.dto.PostSummariesRequestDTO;
 import com.recu.content.features.post.service.InternalPostService;
+import com.recu.content.support.ContentQueryParameters;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/internal/posts")
