@@ -17,10 +17,12 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 
 /** 서비스처럼 common-kafka만 의존한 앱에서 A·B·C를 내장 Kafka로 실제로 보내고 받아 본다. */
@@ -36,6 +38,7 @@ class CommonKafkaAutoConfigurationTest {
 
   @Autowired KafkaEventPublisher publisher;
   @Autowired TestListener listener;
+  @Autowired ProducerFactory<String, Object> producerFactory;
 
   @Test
   @DisplayName("A를 보내면 키는 url, eventType은 POST_COLLECTED, 내용물은 그대로 받는다")
@@ -106,6 +109,13 @@ class CommonKafkaAutoConfigurationTest {
     Received<PostCollectedEvent> received =
         take(listener.postCollected, r -> sent.url().equals(r.key()));
     assertThat(received.message().payload().contentHtml()).isEqualTo(html);
+  }
+
+  @Test
+  @DisplayName("Kafka가 꺼져 있어도 발행은 최대 15초(max.block.ms)만 기다린다")
+  void maxBlock() {
+    assertThat(producerFactory.getConfigurationProperties())
+        .containsEntry(ProducerConfig.MAX_BLOCK_MS_CONFIG, 15_000L);
   }
 
   private static PostCollectedEvent post(String url, String contentHtml) {
