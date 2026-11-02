@@ -17,6 +17,8 @@ eureka:
   client:
     enabled: false
 
-gemini:
+openai:
   api-key: test-key
-  prompt-version: v1
+
+guide:
+  prompt-version: v2

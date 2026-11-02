@@ -32,17 +32,17 @@ public class GuideService {
   private static final Set<String> BADGES = Set.of("KEY", "LIGHT", "SKIP", "REF");
 
   private final GuideRepository guideRepository;
-  private final GeminiGuideClient geminiClient;
+  private final OpenAiGuideClient aiClient;
   private final ObjectMapper objectMapper;
   private final String promptVersion;
 
   public GuideService(
       GuideRepository guideRepository,
-      GeminiGuideClient geminiClient,
+      OpenAiGuideClient aiClient,
       ObjectMapper objectMapper,
-      @Value("${gemini.prompt-version}") String promptVersion) {
+      @Value("${guide.prompt-version}") String promptVersion) {
     this.guideRepository = guideRepository;
-    this.geminiClient = geminiClient;
+    this.aiClient = aiClient;
     this.objectMapper = objectMapper;
     this.promptVersion = promptVersion;
   }
@@ -64,7 +64,7 @@ public class GuideService {
   private GuideResponseDTO generate(Profile profile, GuideInput post) {
     List<Section> sections = post.sections();
     GeneratedGuide generated =
-        parseAndValidate(callGemini(buildPrompt(profile, post, sections)), sections.size());
+        parseAndValidate(callAi(buildPrompt(profile, post, sections)), sections.size());
 
     AiGuideEntity guide =
         AiGuideEntity.builder()
@@ -90,9 +90,9 @@ public class GuideService {
     }
   }
 
-  private String callGemini(String prompt) {
+  private String callAi(String prompt) {
     try {
-      return geminiClient.generate(prompt);
+      return aiClient.generate(prompt);
     } catch (Exception exception) {
       throw aiUnavailable();
     }
