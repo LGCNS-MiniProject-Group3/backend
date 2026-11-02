@@ -1,5 +1,6 @@
 package com.recu.collector.features.collect.service;
 
+import com.recu.collector.client.ContentClient;
 import com.recu.collector.database.entity.CollectJobEntity;
 import com.recu.collector.database.repository.CollectJobRepository;
 import com.recu.collector.features.collect.domain.dto.CollectJobResponseDTO;
@@ -32,14 +33,16 @@ public class CollectJobService {
   private static final String RUNNING = "RUNNING";
 
   private final WebCollectService webCollectService;
-  private final ContentStub content;
+  private final ContentClient contentClient;
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
   private final CollectJobRepository repository;
 
   public CollectJobService(
-      WebCollectService webCollectService, ContentStub content, CollectJobRepository repository) {
+      WebCollectService webCollectService,
+      ContentClient contentClient,
+      CollectJobRepository repository) {
     this.webCollectService = webCollectService;
-    this.content = content;
+    this.contentClient = contentClient;
     this.repository = repository;
   }
 
@@ -51,11 +54,13 @@ public class CollectJobService {
       return toDto(existing.get());
     }
 
-    // 2) 특정 기업만이면 존재 확인 (없으면 404)
+    // 2) 특정 기업만이면 존재 확인 (없으면 404). companyId == null 이면 전체 수집이라 건너뛴다.
     if (companyId != null) {
-      content
-          .company(companyId)
-          .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND));
+      boolean found =
+          contentClient.getCompanies().stream().anyMatch(c -> companyId.equals(c.companyId()));
+      if (!found) {
+        throw new BusinessException(CommonErrorCode.NOT_FOUND);
+      }
     }
 
     // 3) DB에 RUNNING 저장
@@ -78,14 +83,15 @@ public class CollectJobService {
   }
 
   private List<CompanyTarget> targets(Long companyId) {
-    List<CompanyTarget> all = new ArrayList<>(content.companies());
+    List<CompanyTarget> all = new ArrayList<>(contentClient.getCompanies());
     if (companyId == null) {
       return all;
     }
-    return List.of(
-        content
-            .company(companyId)
-            .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND)));
+    return all.stream()
+        .filter(c -> companyId.equals(c.companyId()))
+        .findFirst()
+        .map(List::of)
+        .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND));
   }
 
   private void runJob(String jobId, Long companyId) {

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.recu.collector.client.ContentClient;
 import com.recu.collector.database.entity.CollectJobEntity;
 import com.recu.collector.database.repository.CollectJobRepository;
 import java.time.LocalDateTime;
@@ -21,7 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class CollectJobServiceTest {
 
   @Mock WebCollectService webCollectService;
-  @Mock ContentStub content;
+  @Mock ContentClient contentClient;
   @Mock CollectJobRepository repository;
 
   @InjectMocks CollectJobService service;
