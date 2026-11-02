@@ -93,7 +93,7 @@ V2 작업의 담당은 V1이 끝난 뒤 정해요. 수신 공통 설정은 6번,
 
 ### 6. guide 서비스 · Kafka 공통
 
-- guide: `GuideService`를 옮기고, ④⑤ 호출과 Gemini를 연결하고, 새 가이드를 저장하면 C `recu.guide.created`를 발행해요.
+- guide: `GuideService`를 옮기고, ④⑤ 호출과 OpenAI를 연결하고, 새 가이드를 저장하면 C `recu.guide.created`를 발행해요.
 - Kafka 공통 설정: 토픽 3개 생성, 메시지 봉투 · DTO 3개 (필드 이름 확정)
 - 발행(`KafkaTemplate`) · 수신(`@KafkaListener`) 설정을 공통으로 만들어서 다른 담당자가 가져다 쓰게 해요.
 
@@ -118,7 +118,7 @@ V2 작업의 담당은 V1이 끝난 뒤 정해요. 수신 공통 설정은 6번,
 | 3 content 조회 | 내부 API ③⑤⑥⑦ 스펙 확정 · stub 공개 | 조회 API 이전, Feign ①② + fallback | `user_guide_flag`로 가이드 배지 표시 | 〃 |
 | 4 content 수신 | `user_guide_flag` 테이블 확정 | 글 저장 로직 이전, 기업 기본 데이터 | 메시지 3개 수신 (글 저장 · 가이드 표시) | 〃 |
 | 5 collector · 로컬 | docker-compose (MariaDB · Kafka) | collector 이전, ⑥ 호출, collect_job · 작업 조회 API | A 발행 (웹 수집 · import) | 〃 |
-| 6 guide · Kafka | 메시지 DTO 3개 · 토픽 확정 | guide 이전, ④⑤ + Gemini, Kafka 공통 설정 | C 발행, 발행 · 수신 공통 설정 | 〃 |
+| 6 guide · Kafka | 메시지 DTO 3개 · 토픽 확정 | guide 이전, ④⑤ + OpenAI, Kafka 공통 설정 | C 발행, 발행 · 수신 공통 설정 | 〃 |
 | 7 CI/CD · 테스트 | ci.yml, 브랜치 보호 | Dockerfile 템플릿, ECR | cd.yml, EC2 배포 서버, Secrets | 통합 테스트 체크리스트 실행 |
 
 여기까지가 V1이에요. V2(Kafka 동기화 처리)는 V1 통합 테스트가 통과한 뒤 시작해요.
