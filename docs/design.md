@@ -34,7 +34,7 @@
 
 ### 원본 시스템
 
-- React(Vercel) → Spring Boot 단일 서버(Railway) → MariaDB. 외부 연동은 Google OAuth, Gemini예요.
+- React(Vercel) → Spring Boot 단일 서버(Railway) → MariaDB., Gemini예요.
 - Spring Boot 3.4.5, Java 17, JPA `ddl-auto`로 스키마 생성. 테이블 11개, API 17개.
 - 코드가 `features/` 아래 기능별 패키지(`user`, `tech`, `company`, `post`, `guide`, `bookmark`, `collect`)로 나뉘어 있어 서비스 경계를 잡기 쉬워요.
 - 엔티티는 `database/` 한 곳에 모여 있고, 다른 기능의 엔티티끼리 `@ManyToOne`으로 묶여 있어요. 분리 작업은 대부분 이 연결을 끊는 일이에요.
@@ -101,8 +101,7 @@ flowchart LR
   CL --- DCL[(collector DB)]
   G --- DG[(guide DB)]
   B --- DB[(bookmark DB)]
-
-  U --> GO[Google OAuth]
+  
   G --> AI[OpenAI]
   CL --> AI
 ```
@@ -118,31 +117,44 @@ Eureka와 Config Server는 모든 서비스가 연결되므로 그림에서 뺐�
 3. 클라이언트가 직접 보낸 `X-User-*` 헤더는 Gateway가 먼저 지워요. 지우지 않으면 누구나 다른 사용자로 위장할 수 있어요.
 4. 각 서비스는 JWT를 다루지 않고 `X-User-Id` 헤더만 읽어요. 토큰 발급·재발급·로그아웃은 user 서비스가 그대로 맡아요.
 
+### 회원가입·로그인 API
+
+| API | 요청 본문 | 성공 응답 | 오류 |
+| --- | --- | --- | --- |
+| `POST /api/auth/signup` | `{"email":"user@example.com","password":"비밀번호","name":"홍길동"}` | `201 Created`, 본문: `{"userId":1,"name":"홍길동","profileCompleted":false}` | 입력 형식 오류: `400 INVALID_INPUT`, 이메일 중복: `409 EMAIL_ALREADY_EXISTS` |
+| `POST /api/auth/login` | `{"email":"user@example.com","password":"비밀번호"}` | `200 OK`, 본문: `{"userId":1,"name":"홍길동","profileCompleted":false}`, 헤더: `Authorization: Bearer <access-token>`, `Refresh-Token: <refresh-token>` | 이메일 또는 비밀번호 불일치: `401 INVALID_CREDENTIALS` |
+
+오류 응답 본문은 공통 형식인 `{"code":"...","message":"...","field":"..."}`을 사용해요.
+
 ### 로그인과 토큰 저장
 
-원본 방식을 그대로 옮겨요.
+- 회원가입은 `POST /api/auth/signup`으로 이메일·비밀번호·이름을 받아 처리해요. 
+- 비밀번호는 BCrypt로 해시해 저장해요.
+- 로그인은 `POST /api/auth/login`으로 이메일·비밀번호를 확인해요. 인증에 성공하면 Access·Refresh JWT를 발급해요.
+- Refresh 토큰은 user 서비스 DB의 `app_user.refresh_token`에 저장해요. 재발급(`POST /api/auth/refresh`)은 전달된 Refresh 토큰과 DB 값을 비교하고, 로그아웃은 저장된 값을 지워요.
+- Gateway는 Access 토큰의 서명과 만료를 검사해요. Refresh 토큰은 검사하지 않아요.
+- Redis는 사용하지 않아요. 로그아웃 후에도 이미 발급된 Access 토큰은 만료될 때까지 유효해요.
 
-- 로그인은 Google OAuth예요. 프론트가 받은 Google 토큰을 `POST /api/auth/google`로 보내면, user 서비스가 Google에 확인한 뒤 회원을 찾거나 만들고 Access·Refresh 토큰을 발급해요.
-- Refresh 토큰은 user 서비스 DB의 `app_user.refresh_token`에 저장해요. 재발급(`/api/auth/refresh`)은 이 값과 비교하고, 로그아웃은 이 값을 지워요.
-- Gateway는 Access 토큰의 서명과 만료만 검사해요. Refresh 토큰은 보지 않아요.
-- Redis는 쓰지 않아요. 로그아웃한 Access 토큰은 만료될 때까지 유효해요(원본과 같음).
+### Gateway 경로 인증 정책
 
-### 토큰 없이 통과시키는 경로
 
-원본 `SecurityConfig`의 `permitAll` 목록을 그대로 옮겨요.
+회원가입·로그인·공개 조회는 Access 토큰 없이 호출할 수 있어요. 토큰 재발급에는 Refresh 토큰이 필요하고, 그 외 보호된 경로는 Access 토큰이 필요해요.
 
-| 경로 | 비고 |
+| 경로 | 인증 |
 | --- | --- |
-| `POST /api/auth/google`, `POST /api/auth/refresh` | `/api/auth/logout`은 토큰 필요 |
-| `GET /api/tech-tags` | |
-| `GET /api/companies/{id}` | 기업 목록 `GET /api/companies`는 토큰 필요 |
-| `/swagger-ui/**`, `/v3/api-docs/**` | |
-| ~~`POST /api/admin/collect/import`~~ | 원본에서 임시로 열어 둔 경로. 이번에 ADMIN 전용으로 닫아요 |
+| `POST /api/auth/signup` | 공개 |
+| `POST /api/auth/login` | 공개 |
+| `POST /api/auth/refresh` | Access 토큰 불필요, Refresh 토큰 필요 |
+| `POST /api/auth/logout` | Access 토큰 필요 |
+| `GET /api/tech-tags` | 공개 |
+| `GET /api/companies/{id}` | 공개 |
+| `GET /api/companies` | Access 토큰 필요 |
+| `/swagger-ui/**`, `/v3/api-docs/**` | 공개 |
+
 
 `/api/admin/**`는 Gateway에서 `X-User-Role`이 `ADMIN`인지 확인하고, 아니면 403 `FORBIDDEN`을 돌려줘요. 오류 응답 모양(`code`, `message`, `field`)은 원본 규격을 그대로 따라요.
 
 서비스 간 내부 호출 경로(`/internal/**`)는 Gateway 라우트에 넣지 않아 외부에서 호출할 수 없게 해요.
-
 ## 5. 동기 통신 (OpenFeign)
 
 응답에 바로 필요한 값만 Feign으로 물어요. 목록 화면에서 글마다 한 번씩 부르지 않도록, 여러 id를 한 번에 보내는 일괄 조회 형태로 만들어요. 번호(①~⑦)는 [roles.md](roles.md)와 같아요.
@@ -315,7 +327,7 @@ sequenceDiagram
 
 ### 수집 작업 조회 (신규 외부 API)
 
-원본은 작업 상태를 메모리에만 두고 조회 API가 없었어요. `collect_job`으로 옮기면서 관리자가 진행 상황을 볼 수 있게 조회 API 2개를 더해요. 원본 외부 API 17개에 더해지는 **유일한 신규 외부 API**예요.
+원본에는 수집 작업 상태 조회 API가 없었어요. MSA에서는 `collect_job` 테이블을 추가하고 관리자용 조회 API 2개를 제공해요. 회원가입·로그인 API의 변경 사항은 4장에 정리했어요.
 
 | API | 응답 | 오류 |
 | --- | --- | --- |
@@ -348,6 +360,17 @@ MariaDB 서버 하나에 서비스별 데이터베이스(스키마) 5개를 만�
 | `recu_guide` | ai_guide | `user_id` → user, `blog_post_id` → content | 6번 |
 | `recu_bookmark` | bookmark, user_guide_flag | `user_id` → user, `blog_post_id` → content | 2·4번 |
 
+### USER 서비스 `app_user` 변경
+
+이메일·비밀번호 가입을 위해 `app_user`를 다음과 같이 변경해요.
+
+| 컬럼 | 변경 |
+| --- | --- |
+| `google_sub` | 삭제 |
+| `email` | 추가. `NOT NULL`, `UNIQUE` |
+| `password_hash` | 추가. `NOT NULL` |
+
+회원가입 시 비밀번호 원문은 저장하지 않고 BCrypt 해시를 `password_hash`에 저장해요.
 ### 새 테이블
 
 ```sql
@@ -412,7 +435,7 @@ collect_job (
 ├─ application-dev.yml          # dev: compose로 전체 스택 실행
 ├─ application-prod.yml         # prod: EC2 배포
 ├─ gateway.yml                  # JWT 서명 키, CORS 출처 (라우트·permitAll 목록은 gateway 코드)
-├─ user.yml                     # DB, Google client id
+├─ user.yml                     # DB, JWT 설정
 ├─ content.yml
 ├─ collector.yml                # 분류 모델 설정
 ├─ guide.yml                    # 가이드 모델, 가이드 지시문 버전
@@ -444,14 +467,14 @@ collect_job (
 
 | 값 | 둘 곳 |
 | --- | --- |
-| DB 비밀번호, JWT 서명 키, Google client id | 설정 저장소에 `{cipher}`로 암호화해서 저장 (선택 2번) |
+| DB 비밀번호, JWT 서명 키 | 설정 저장소에 `{cipher}`로 암호화해서 저장 (선택 2번) |
 | `ENCRYPT_KEY`(복호화 키), 설정 저장소 읽기 토큰 | 실행 환경의 `.env`에만 (로컬은 각자, 배포는 EC2) |
 | OpenAI 키 (`OPENAI_API_KEY`) | 실행 환경의 `.env`에만. 키 제공 조건이 "GitHub에 올리지 않음"이라 암호화해도 설정 저장소에 두지 않아요. 비어 있으면 서비스는 뜨고 AI 호출만 실패해요 |
 | MariaDB root 비밀번호 (local·dev) | 각자 `.env` (DB 컨테이너가 Config Server보다 먼저 떠요) |
 | RDS 마스터 비밀번호 (prod) | EC2에 두지 않음. DB·계정을 처음 만들 때만 쓰고, 담당자(7번)가 비공개로 보관 |
 
 - 서비스는 비밀 값을 직접 갖지 않고, Config Server가 풀어서 내려준 값을 받아요.
-- 각 담당이 필요한 비밀 값(Google client id 등)은 직접 넣지 않고 1번에게 전달해 암호화해서 넣어요.
+- 각 담당이 필요한 비밀 값(DB 비밀번호, JWT 서명 키)은 직접 넣지 않고 1번에게 전달해 암호화해서 넣어요.
 - `ENCRYPT_KEY`와 저장소 토큰은 팀 채널 같은 비공개 경로로만 주고받아요. 1번이 팀원(로컬 실행)과 7번(EC2 `.env`, GitHub Secrets)에게 전달해요. 이슈·PR·커밋·공개 문서에는 적지 않아요.
 - OpenAI 키도 같은 비공개 경로로 주고받아요. 배포에서는 EC2 `.env`에만 두고 GitHub Secrets에는 넣지 않아요. CI 테스트는 가짜 서버를 써서 키가 필요 없어요.
 - `ENCRYPT_KEY`는 한 번 정하면 바꾸지 않아요. 바꾸면 설정 저장소의 `{cipher}` 값을 모두 다시 암호화해야 해요. 키가 새어 나가면 1번이 새 키로 다시 암호화하고 팀에 새 키를 전달해요.
@@ -500,7 +523,7 @@ flowchart LR
 
 - **바뀐 서비스만 빌드**: `dorny/paths-filter`로 바뀐 폴더를 찾고 그 목록을 matrix로 돌려요. `common`이 바뀌면 전체를 빌드해요. 서비스 8개를 매번 다 빌드하면 한 번에 10분 넘게 걸려요.
 - **이미지 태그**: `<계정ID>.dkr.ecr.ap-northeast-2.amazonaws.com/recu-<서비스>:<커밋 SHA>`와 `latest`. SHA 태그가 있어야 어떤 커밋이 배포됐는지 추적하고, 문제가 생기면 이전 SHA로 되돌릴 수 있어요.
-- **비밀 값**: 서비스용 비밀 값은 설정 저장소에 암호화해 둬요(9장). EC2 `.env`에는 `ENCRYPT_KEY`와 설정 저장소 토큰만 둬요(DB는 RDS). AWS 접근 키는 OIDC를 쓰면 저장하지 않아도 돼요.
+- **비밀 값**: DB 비밀번호와 JWT 서명 키는 설정 저장소에 암호화해 둬요(9장). EC2 `.env`에는 `ENCRYPT_KEY`, 설정 저장소 토큰, `OPENAI_API_KEY`를 둬요(DB는 RDS). AWS 접근 키는 OIDC를 쓰면 저장하지 않아도 돼요.
 - **배포 이력**: 배포 job에 `environment: production`을 지정하면 저장소의 Deployments 화면에 배포 시각, 커밋, 결과가 자동으로 쌓여요. 이 화면과 Actions 실행 기록을 캡처해 증빙해요.
 
 ### 배포 대상: AWS ECR + EC2
@@ -582,15 +605,13 @@ flowchart LR
 | 4 | Config 중앙화 | Config Server로 공통·개별 설정 외부화, local/dev/prod 프로필 분리 | private 설정 저장소 + Config Server, local/dev/prod 프로필 (9장) | 서비스가 Config에서 DB·공통 설정을 받아 기동 | V1 |
 | 5 | 동기 통신 | 즉시 응답이 필요한 조회를 OpenFeign으로 | 내부 API 7개 ①~⑦ (5장) | 기업 목록·가이드·북마크 화면 동작 | V1 |
 | 6 | 비동기 통신 | Kafka 발행·구독으로 다른 서비스 데이터에 반영 | 토픽 3개 A~C (6장) | 수집·프로필 변경·가이드 생성 후 화면 반영 | V1 |
-| 7 | 도메인 API | 핵심 도메인 CRUD와 상태 관리 | 원본 외부 API 17개 유지 ([reference/api-spec.md](reference/api-spec.md)) + 수집 작업 상태 조회 2개 (7장) | 로그인·조회·가이드·북마크·관리자 수집 동작 | V1 |
+| 7 | 도메인 API | 핵심 도메인 CRUD와 상태 관리 | 원본 도메인 API 유지, 이메일·비밀번호 회원가입·로그인 API 추가·변경 (4장), 수집 작업 상태 조회 2개 추가 (7장) | 회원가입·로그인·조회·가이드·북마크·관리자 수집 동작 | V1 |
 | 8 | 서비스별 DB 분리 | Database per Service, 서비스별 스키마·ERD | 서비스별 DB 5개와 계정 분리 (8장) | 서비스 계정이 다른 서비스 DB에 접근 못 함 | V1 |
 | 9 | 컨테이너화 | 전 서비스 Dockerfile, Compose로 전체 스택 로컬 기동 | 서비스별 Dockerfile, `infra/compose.yaml` | `docker compose up` 한 번으로 전체 기동 | V1 |
 | 10 | 핵심 차별화 기술 | 조별 1개 채택 | **CI/CD 파이프라인** (10장): GitHub Actions 빌드·테스트·이미지 푸시·배포 자동화 | 자동 배포 1회 이상 시연, 배포 이력 캡처 | V1 |
 
 ### 선택 요구사항
 
-| No | 요구사항 | 구현 기준 (안내 자료) | 우리 계획 | 단계 |
-| --- | --- | --- | --- | --- |
 확정한 것만 적어요. 나머지(3 Kubernetes, 5 Circuit Breaker, 6 분산 추적, 7 부하 테스트, 8 관리자 대시보드, 9 알림 연동)는 팀 회의를 거쳐 **요구사항 명세서**에서 정하고, 정해지면 이 표에 더해요.
 
 | No | 요구사항 | 구현 기준 (안내 자료) | 우리 계획 | 단계 |
@@ -601,7 +622,6 @@ flowchart LR
 | 10 | 추가 핵심 기술 | 10번으로 채택하지 않은 핵심 기술 1개 | **Kafka 이벤트 동기화**: 재시도·DLT·중복 무시 (6장 V2). 버전 정책상 V1 이후 여유 시 | V2 |
 
 > **CI/CD를 필수 10번에 두는 이유.** Kafka 동기화는 V1이 끝난 뒤 여유 시 진행하는 V2라 못 할 수도 있어요. Kafka를 필수 10번에 두고 못 하면 0점 + CI/CD 3점이지만, CI/CD를 필수 10번에 두면 V1만 끝내도 7점을 확보해요. Kafka 동기화까지 끝내면 어느 쪽이든 10점이에요.
-
 ## 13. 결정 사항
 
 ### 정해진 것
@@ -613,7 +633,8 @@ flowchart LR
 | 배포 | GitHub Actions에서 빌드 → AWS ECR 푸시 → EC2에서 pull·실행 |
 | 배포 DB | AWS RDS for MariaDB 1대 + DB 5개 + 서비스별 계정 (8장) |
 | 선택 요구사항 (확정) | 1 Spring Cloud Bus, 2 설정 암호화, 4 클라우드 실배포. 나머지는 요구사항 명세서에서 결정 |
-| 로그인 · 토큰 | Google OAuth 유지, Refresh 토큰은 user DB에 저장, Redis 안 씀 (4장) |
+| 로그인 | 이메일·비밀번호 가입·로그인, USER가 JWT를 발급하고 Gateway가 Access JWT를 검증 |
+| 토큰 | Refresh 토큰은 user DB에 저장, Redis 안 씀 (4장) |
 | 서비스 수 | 5개 (collector 분리) |
 | AI | 원본의 Gemini → OpenAI `gpt-4o-mini`. Google AI Studio 키 발급이 어려워 바꿈. 팀 키 1개를 각자 `.env`로만 받음 (9장 AI 호출 설정) |
 | 저장소 구성 | 백엔드 저장소 하나에 서비스별 폴더 |
@@ -623,6 +644,6 @@ flowchart LR
 
 | 항목 | 선택지 | 제안 |
 | --- | --- | --- |
-| 관리자 계정 만드는 법 | 초기 SQL / 별도 API | 관리자로 쓸 구글 계정으로 한 번 로그인한 뒤 SQL로 `role`을 `ADMIN`으로 바꿈. 새 API는 만들지 않음 |
+| 관리자 계정 만드는 법 | 초기 SQL / 별도 API | 이메일·비밀번호 계정을 만든 뒤 SQL로 `role`을 `ADMIN`으로 변경. 새 API는 만들지 않음 |
 | AWS 계정 | 배정 예정 | 받으면 IAM 역할(OIDC, EC2)과 ECR 저장소를 누가 만들지 정함 |
 | EC2 배포 명령 방식 | SSM Run Command / SSH | SSM Run Command (10장) |
