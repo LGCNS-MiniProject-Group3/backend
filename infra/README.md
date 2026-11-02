@@ -39,7 +39,9 @@ docker compose -f infra/compose.yaml --env-file .env up -d
 | Kafka | `localhost:9092` |
 
 ```bash
-docker compose -f infra/compose.yaml ps
+docker compose -f infra/compose.yaml --env-file .env ps
+docker compose -f infra/compose.yaml --env-file .env logs mariadb --tail 50
+docker compose -f infra/compose.yaml --env-file .env logs kafka --tail 50
 docker compose -f infra/compose.yaml logs mariadb --tail 50
 docker compose -f infra/compose.yaml logs kafka --tail 50
 ```
