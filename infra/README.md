@@ -47,14 +47,15 @@ docker compose -f infra/compose.yaml --env-file .env logs kafka --tail 50
 
 ## db/ 파일
 
-| 파일 | 담당 |
-| --- | --- |
-| `01-databases.sql` | 5번 (DB·계정·권한) |
-| `02-user-schema.sql` | 2번 |
-| `02-content-schema.sql` | 3·4번 |
-| `02-collector-schema.sql` | 5번 |
-| `02-guide-schema.sql` | 6번 |
-| `02-bookmark-schema.sql` | 2·4번 |
-| `03-content-data.sql` | 5번 (덤프 INSERT, 후속) |
+| 파일 | 담당 | 내용 |
+| --- | --- | --- |
+| `01-databases.sql` | 5번 | DB·계정·권한 |
+| `02-user-schema.sql` | 2번 (초안은 infra) | `app_user`, `user_job_field`, `user_skill` |
+| `02-content-schema.sql` | 3·4번 (초안은 infra) | `company`, `blog_post`, …, `user_guide_flag` |
+| `02-collector-schema.sql` | 5번 | `collect_job` |
+| `02-guide-schema.sql` | 6번 (초안은 infra) | `ai_guide` |
+| `02-bookmark-schema.sql` | 2·4번 (초안은 infra) | `bookmark`, `user_guide_flag` |
+| `03-content-data.sql` | 5번 | 덤프 INSERT (후속) |
 
 엔티티를 바꾸면 같은 PR에서 해당 `02-*-schema.sql`도 함께 수정합니다.
+스키마 SQL을 고친 뒤에는 `down -v` 후 다시 `up` 해야 테이블이 다시 만들어집니다.
