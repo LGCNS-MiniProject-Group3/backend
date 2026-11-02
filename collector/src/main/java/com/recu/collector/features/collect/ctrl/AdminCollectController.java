@@ -17,9 +17,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- 관리자용 적재 입구.
- <p>권한은 Gateway가 {@code /api/admin/**}에서 ADMIN만 통과시킨다.
- collector는 여기서 별도 권한 검사를 하지 않는다.
+ * 관리자용 적재 입구.
+ *
+ * <p>권한은 Gateway가 {@code /api/admin/**}에서 ADMIN만 통과시킨다. collector는 여기서 별도 권한 검사를 하지 않는다.
  */
 @RestController
 @RequestMapping("/api/admin/collect")
