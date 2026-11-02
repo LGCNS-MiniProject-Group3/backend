@@ -414,8 +414,8 @@ collect_job (
 ├─ gateway.yml                  # JWT 서명 키, CORS 출처 (라우트·permitAll 목록은 gateway 코드)
 ├─ user.yml                     # DB, Google client id
 ├─ content.yml
-├─ collector.yml                # OpenAI 키, 분류 모델 설정
-├─ guide.yml                    # OpenAI 키, 가이드 모델, 가이드 지시문 버전
+├─ collector.yml                # 분류 모델 설정
+├─ guide.yml                    # 가이드 모델, 가이드 지시문 버전
 └─ bookmark.yml
 ```
 
@@ -432,7 +432,7 @@ collect_job (
 
 | 설정 키 | 파일 | 값 |
 | --- | --- | --- |
-| `openai.api-key` | collector.yml, guide.yml | `{cipher}` |
+| `openai.api-key` | 각 서비스의 application.yml | `${OPENAI_API_KEY:}`. 키는 설정 저장소에도 두지 않고 실행 환경의 `.env`로만 받아요(아래 비밀 값) |
 | `collect.classify.model` | collector.yml | `gpt-4o-mini` |
 | `guide.model` | guide.yml | `gpt-4o-mini`. 원본은 guide도 collector의 `collect.classify.model`을 읽었는데, 이번에 나눠요 |
 | `guide.prompt-version` | guide.yml | `v2`. 원본의 `gemini.prompt-version`(`v1`)에서 이름을 바꾸고 올려요. 모델이 바뀌어 옛 가이드를 다시 쓰지 않게 해요 |
@@ -444,14 +444,16 @@ collect_job (
 
 | 값 | 둘 곳 |
 | --- | --- |
-| DB 비밀번호, JWT 서명 키, OpenAI 키, Google client id | 설정 저장소에 `{cipher}`로 암호화해서 저장 (선택 2번) |
+| DB 비밀번호, JWT 서명 키, Google client id | 설정 저장소에 `{cipher}`로 암호화해서 저장 (선택 2번) |
 | `ENCRYPT_KEY`(복호화 키), 설정 저장소 읽기 토큰 | 실행 환경의 `.env`에만 (로컬은 각자, 배포는 EC2) |
+| OpenAI 키 (`OPENAI_API_KEY`) | 실행 환경의 `.env`에만. 키 제공 조건이 "GitHub에 올리지 않음"이라 암호화해도 설정 저장소에 두지 않아요. 비어 있으면 서비스는 뜨고 AI 호출만 실패해요 |
 | MariaDB root 비밀번호 (local·dev) | 각자 `.env` (DB 컨테이너가 Config Server보다 먼저 떠요) |
 | RDS 마스터 비밀번호 (prod) | EC2에 두지 않음. DB·계정을 처음 만들 때만 쓰고, 담당자(7번)가 비공개로 보관 |
 
 - 서비스는 비밀 값을 직접 갖지 않고, Config Server가 풀어서 내려준 값을 받아요.
-- 각 담당이 필요한 비밀 값(Google client id, OpenAI 키 등)은 직접 넣지 않고 1번에게 전달해 암호화해서 넣어요.
+- 각 담당이 필요한 비밀 값(Google client id 등)은 직접 넣지 않고 1번에게 전달해 암호화해서 넣어요.
 - `ENCRYPT_KEY`와 저장소 토큰은 팀 채널 같은 비공개 경로로만 주고받아요. 1번이 팀원(로컬 실행)과 7번(EC2 `.env`, GitHub Secrets)에게 전달해요. 이슈·PR·커밋·공개 문서에는 적지 않아요.
+- OpenAI 키도 같은 비공개 경로로 주고받아요. 배포에서는 EC2 `.env`에만 두고 GitHub Secrets에는 넣지 않아요. CI 테스트는 가짜 서버를 써서 키가 필요 없어요.
 - `ENCRYPT_KEY`는 한 번 정하면 바꾸지 않아요. 바꾸면 설정 저장소의 `{cipher}` 값을 모두 다시 암호화해야 해요. 키가 새어 나가면 1번이 새 키로 다시 암호화하고 팀에 새 키를 전달해요.
 - 설정을 고친 뒤에는 Spring Cloud Bus로 한 번에 반영해요(아래).
 
@@ -613,7 +615,7 @@ flowchart LR
 | 선택 요구사항 (확정) | 1 Spring Cloud Bus, 2 설정 암호화, 4 클라우드 실배포. 나머지는 요구사항 명세서에서 결정 |
 | 로그인 · 토큰 | Google OAuth 유지, Refresh 토큰은 user DB에 저장, Redis 안 씀 (4장) |
 | 서비스 수 | 5개 (collector 분리) |
-| AI | 원본의 Gemini → OpenAI `gpt-4o-mini`. Google AI Studio 키 발급이 어려워 바꿈. 팀 키 1개를 설정 저장소에 암호화 (9장 AI 호출 설정) |
+| AI | 원본의 Gemini → OpenAI `gpt-4o-mini`. Google AI Studio 키 발급이 어려워 바꿈. 팀 키 1개를 각자 `.env`로만 받음 (9장 AI 호출 설정) |
 | 저장소 구성 | 백엔드 저장소 하나에 서비스별 폴더 |
 | 공통 코드 | `common` 모듈 (웹: 1번, Kafka: 6번) |
 

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 /** 모델 답을 표 칸 값으로 옮기는 규칙. 실제 호출은 하지 않는다. */
 class PostClassifierTest {
 
-  private final PostClassifier classifier = new PostClassifier(null, "k", "m", 10, 0, millis -> {});
+  private final PostClassifier classifier = new PostClassifier(null, "m", 10, 0, millis -> {});
 
   @Test
   void 허용값_안의_답은_그대로_옮긴다() throws Exception {
