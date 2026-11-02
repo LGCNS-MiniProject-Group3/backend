@@ -213,7 +213,8 @@ Eureka와 Config Server는 모든 서비스가 연결되므로 그림에서 뺐�
 { "userId": 12, "postId": 128 }
 ```
 
-- B·C의 payload는 V1 기본값이에요. 필드 이름은 6번이 `common-kafka`를 만들며 확정해요.
+- `eventType`은 토픽마다 하나예요. A `POST_COLLECTED`, B `PROFILE_UPDATED`, C `GUIDE_CREATED`. 토픽 이름의 뒤 두 단어를 UPPER_SNAKE_CASE로 옮겨요.
+- B·C의 payload는 위 V1 기본값으로 확정했어요.
 - `eventId`는 V1에서 담기만 하고, V2에서 중복 확인에 써요.
 - V2에서 순서 뒤바뀜을 처리할 때 B·C에 `profileVersion`을 더해요(아래 V2 표).
 
