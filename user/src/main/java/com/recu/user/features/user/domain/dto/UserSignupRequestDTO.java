@@ -11,11 +11,15 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserSignupRequestDTO {
-  // postman에서 입력 받을 회원가입 JSON
-  @NotBlank @Email private String email;
-
+  // 입력 검증 규칙은 design.md 4장 회원가입 입력 검증 표
   @NotBlank
-  @Size(min = 8)
+  @Email
+  @Size(max = 100)
+  private String email;
+
+  // BCrypt는 72바이트까지만 쓴다. 한글 등은 한 글자가 여러 바이트라 글자 수로는 충분히 막지 못한다 (확인 요망)
+  @NotBlank
+  @Size(min = 8, max = 72)
   private String password;
 
   @NotBlank

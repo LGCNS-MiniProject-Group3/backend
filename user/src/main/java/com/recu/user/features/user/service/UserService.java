@@ -13,6 +13,7 @@ import com.recu.user.token.JwtProvider.JwtTokenException;
 import jakarta.transaction.Transactional;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -34,19 +35,26 @@ public class UserService {
 
     LocalDate now = LocalDate.now();
 
-    UserEntity user =
-        userRepository.save(
-            UserEntity.builder()
-                .email(email)
-                .password_hash(passwordEncoder.encode(rawPassword))
-                .name(name)
-                .career_years(null)
-                .profile_version(0)
-                .refresh_token(null)
-                .role("USER")
-                .created_at(now)
-                .updated_at(now)
-                .build());
+    UserEntity user;
+    try {
+      // 비밀번호 원문은 저장하지 않고 BCrypt 해시만 둔다 (design.md 8장)
+      user =
+          userRepository.save(
+              UserEntity.builder()
+                  .email(email)
+                  .password_hash(passwordEncoder.encode(rawPassword))
+                  .name(name)
+                  .career_years(null)
+                  .profile_version(0)
+                  .refresh_token(null)
+                  .role("USER")
+                  .created_at(now)
+                  .updated_at(now)
+                  .build());
+    } catch (DataIntegrityViolationException exception) {
+      // 같은 이메일로 동시에 가입하면 위 확인을 둘 다 통과한다. email UNIQUE에 걸린 쪽도 409로 돌려준다
+      throw new BusinessException(UserErrorCode.EMAIL_ALREADY_EXISTS);
+    }
 
     return UserResponseDTO.builder()
         .userId(user.getUser_id())
@@ -55,17 +63,14 @@ public class UserService {
         .build();
   }
 
-  // 로그인시 진입하는곳
   @Transactional
   public LoginResult signIn(UserLoginRequestDTO request) {
     UserEntity user =
         userRepository
             .findByEmail(request.getEmail())
-
-            // 로그인시 이메일 없으면 출력하는 에러
             .orElseThrow(() -> new BusinessException(UserErrorCode.INVALID_CREDENTIALS));
 
-    // 비밀번호가 아니면?
+    // 없는 이메일과 틀린 비밀번호를 같은 오류로 돌려줘 가입 여부가 드러나지 않게 한다
     if (!passwordEncoder.matches(request.getPassword(), user.getPassword_hash())) {
       throw new BusinessException(UserErrorCode.INVALID_CREDENTIALS);
     }

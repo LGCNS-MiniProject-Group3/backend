@@ -15,11 +15,9 @@ final class AccessRule {
 
   private static final List<Permit> PUBLIC =
       List.of(
-
-          // 이메일 회원가입 및 로그인
+          // 원본의 POST /api/auth/google은 이메일·비밀번호 회원가입·로그인으로 바뀌었다 (#60)
           new Permit(HttpMethod.POST, "/api/auth/signup"),
           new Permit(HttpMethod.POST, "/api/auth/login"),
-          new Permit(HttpMethod.POST, "/api/auth/google"),
           new Permit(HttpMethod.POST, "/api/auth/refresh"),
           new Permit(HttpMethod.GET, "/api/tech-tags"),
           // 기업 목록(GET /api/companies)은 토큰이 필요하고, 기업 소개 한 건만 열려 있다
