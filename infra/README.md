@@ -38,13 +38,7 @@ docker compose -f infra/compose.yaml --env-file .env up -d mariadb kafka
 ### dev: 전체 스택
 
 ```bash
-# 1. 이미지를 하나씩 빌드해요 (아래 "알려진 제한" 1번)
-for m in discovery config user content collector guide bookmark gateway; do
-  docker compose -f infra/compose.yaml --env-file .env build "$m" || break
-done
-
-# 2. 띄워요
-docker compose -f infra/compose.yaml --env-file .env up -d
+docker compose -f infra/compose.yaml --env-file .env up -d --build
 ```
 
 처음 빌드는 오래 걸려요. 그다음부터는 Gradle 캐시 덕분에 빨라요.

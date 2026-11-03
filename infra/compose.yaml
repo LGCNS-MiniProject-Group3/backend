@@ -31,7 +31,7 @@ services:
     container_name: recu-config
     ports: [ "127.0.0.1:8888:8888" ]
     environment:
-      CONFIG_REPO_URI: ${CONFIG_REPO_URI}
+      CONFIG_REPO_URI: ${CONFIG_REPO_URI:?Set CONFIG_REPO_URI in .env}
       CONFIG_REPO_TOKEN: ${CONFIG_REPO_TOKEN:?Set CONFIG_REPO_TOKEN in .env}
       ENCRYPT_KEY: ${ENCRYPT_KEY:?Set ENCRYPT_KEY in .env}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -172,6 +172,7 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
+      KAFKA_MESSAGE_MAX_BYTES: 4194304
       # INTERNAL: compose 안 서비스(dev) → kafka:9092 (설정 저장소 application.yml과 같은 포트)
       # EXTERNAL: 호스트 IDE(local) → localhost:9092
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9092
