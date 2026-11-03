@@ -4,14 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.recu.common.kafka.KafkaEventPublisher;
+import com.recu.common.kafka.event.ProfileUpdatedEvent;
 import com.recu.user.client.ContentClient;
 import com.recu.user.client.dto.TechTagResponseDTO;
 import com.recu.user.database.entity.UserEntity;
@@ -24,11 +29,13 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,7 +45,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
-/** 프로필 저장·조회가 content ③으로 기술 번호를 확인하고 이름을 채우는지. content는 가짜로 둔다. */
+/** 프로필 저장·조회가 content ③으로 기술 번호를 확인하고 이름을 채우는지, 저장이 끝나면 B를 보내는지. content와 Kafka 발행은 가짜로 둔다. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -53,6 +60,7 @@ class ProfileControllerTest {
   @Autowired UserJobFieldRepository jobFields;
   @Autowired UserSkillRepository skills;
   @MockitoBean ContentClient contentClient;
+  @MockitoBean KafkaEventPublisher kafka;
 
   private Long userId;
 
@@ -82,6 +90,7 @@ class ProfileControllerTest {
                     .filter(TECH_TAGS::containsKey)
                     .map(id -> new TechTagResponseDTO(id, TECH_TAGS.get(id)))
                     .toList());
+    when(kafka.publishProfileUpdated(any())).thenReturn(new CompletableFuture<>());
   }
 
   @Test
@@ -155,6 +164,54 @@ class ProfileControllerTest {
         .andExpect(jsonPath("$.jobFields[0]").value("Backend"))
         .andExpect(jsonPath("$.haveSkills[0].name").value("Java"))
         .andExpect(jsonPath("$.wantSkills[0].name").value("Kafka"));
+  }
+
+  // ---- B recu.profile.updated 발행 (#61) ----
+
+  @Test
+  @DisplayName("프로필을 등록하면 커밋 뒤 B를 userId로 1번 보낸다")
+  void saveSendsProfileUpdated() throws Exception {
+    mockMvc.perform(profile(post("/api/profile"), "[1]", "[3]")).andExpect(status().isCreated());
+
+    ArgumentCaptor<ProfileUpdatedEvent> sent = ArgumentCaptor.forClass(ProfileUpdatedEvent.class);
+    verify(kafka, times(1)).publishProfileUpdated(sent.capture());
+    assertThat(sent.getValue().userId()).isEqualTo(userId);
+  }
+
+  @Test
+  @DisplayName("프로필을 수정해도 B를 1번 보낸다")
+  void editSendsProfileUpdated() throws Exception {
+    mockMvc.perform(profile(post("/api/profile"), "[1]", "[3]")).andExpect(status().isCreated());
+    clearInvocations(kafka);
+
+    mockMvc
+        .perform(profile(put("/api/profile"), "[2]", "[4]"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.profileVersion").value(2));
+
+    verify(kafka, times(1)).publishProfileUpdated(new ProfileUpdatedEvent(userId));
+  }
+
+  @Test
+  @DisplayName("입력이 틀리거나 content가 응답하지 않아 저장하지 못하면 B를 보내지 않는다")
+  void failedSaveSendsNothing() throws Exception {
+    mockMvc
+        .perform(profile(post("/api/profile"), "[1]", "[3, 999]"))
+        .andExpect(status().isBadRequest());
+    when(contentClient.getTechTags(any())).thenThrow(feignError(503));
+    mockMvc.perform(profile(post("/api/profile"), "[1]", "[3]")).andExpect(status().isBadGateway());
+
+    verify(kafka, never()).publishProfileUpdated(any());
+  }
+
+  @Test
+  @DisplayName("B를 보내다 바로 실패해도 프로필은 저장되고 응답은 그대로다")
+  void publishFailureKeepsResponse() throws Exception {
+    when(kafka.publishProfileUpdated(any())).thenThrow(new IllegalStateException("Kafka 없음"));
+
+    mockMvc.perform(profile(post("/api/profile"), "[1]", "[3]")).andExpect(status().isCreated());
+
+    assertThat(users.findById(userId).orElseThrow().getProfile_version()).isEqualTo(1);
   }
 
   private MockHttpServletRequestBuilder profile(
