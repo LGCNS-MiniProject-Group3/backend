@@ -17,6 +17,7 @@
 | 변수 | local | dev | 받는 곳 |
 | --- | --- | --- | --- |
 | `MARIADB_ROOT_PASSWORD` | 필수 | 필수 | 각자 정함 |
+| `CONFIG_REPO_URI` | IDE 실행 시 | 필수 | 1번 |
 | `ENCRYPT_KEY` | IDE 실행 시 | 필수 | 1번 |
 | `CONFIG_REPO_TOKEN` | IDE 실행 시 | 필수 | 1번 |
 | `OPENAI_API_KEY` | 선택 | 선택 | 1번. 비우면 AI 호출만 실패 |
@@ -42,7 +43,7 @@ docker compose -f infra/compose.yaml --env-file .env up -d --build
 ```
 
 처음 빌드는 오래 걸려요. 그다음부터는 Gradle 캐시 덕분에 빨라요.
-코드를 바꾼 서비스만 다시 빌드하려면 `build <서비스>` 후 `up -d <서비스>` 하면 돼요.
+코드를 바꾼 서비스만 다시 빌드하려면 `up -d --build <서비스>` 하면 돼요.
 
 기동 순서는 `depends_on`으로 정해져 있어요. 앞 단계가 healthy가 되어야 다음이 떠요.
 
@@ -91,10 +92,9 @@ docker compose -f infra/compose.yaml --env-file .env up -d
 
 ## 알려진 제한
 
-1. **이미지를 한꺼번에 빌드하면 실패해요.** `up --build`처럼 8개를 동시에 빌드하면 Gradle 캐시 잠금(`Timeout waiting to lock journal cache`)으로 일부가 실패해요. 위의 순서대로 하나씩 빌드해요. Dockerfile 수정(`sharing=locked`)은 7번에게 요청했어요.
-2. **IDE로 띄운 서비스는 먼저 꺼요.** dev와 IDE 실행이 섞이면 같은 서비스가 Eureka에 두 번 등록돼 요청이 엉뚱한 쪽으로 가요. 포트(8761 · 8888 · 808x)도 겹쳐요.
-3. **dev에서 파일 적재(`/api/admin/collect/import`)는 아직 안 돼요.** `COLLECT_DATA_DIR`의 경로가 컨테이너 안에 없어서예요. 웹 수집은 돼요.
-4. **자원이 넉넉해야 해요.** Docker Desktop 메모리 6GB 이상, 디스크 여유 15GB 이상을 권장해요. 서비스마다 힙은 256MB(`JAVA_TOOL_OPTIONS`)예요.
+1. **IDE로 띄운 서비스는 먼저 꺼요.** dev와 IDE 실행이 섞이면 같은 서비스가 Eureka에 두 번 등록돼 요청이 엉뚱한 쪽으로 가요. 포트(8761 · 8888 · 808x)도 겹쳐요.
+2. **dev에서 파일 적재(`/api/admin/collect/import`)는 아직 안 돼요.** `COLLECT_DATA_DIR`의 경로가 컨테이너 안에 없어서예요. 웹 수집은 돼요.
+3. **자원이 넉넉해야 해요.** Docker Desktop 메모리 6GB 이상, 디스크 여유 15GB 이상을 권장해요. 서비스마다 힙은 256MB(`JAVA_TOOL_OPTIONS`)예요.
 
 ## db/ 파일
 
