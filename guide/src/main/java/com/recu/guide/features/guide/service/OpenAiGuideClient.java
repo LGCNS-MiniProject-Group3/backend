@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.recu.common.web.error.BusinessException;
 import com.recu.guide.error.GuideErrorCode;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +25,9 @@ public class OpenAiGuideClient {
 
   private static final int MAX_ATTEMPTS = 3;
   private static final long BACKOFF_MILLIS = 500;
+  // 응답 스키마는 객체 속성 수에 한도가 있다. 구간이 이보다 많으면 스키마 없이 json_object로 부른다
+  private static final int SCHEMA_MAX_SECTIONS = 90;
+  private static final List<String> BADGES = List.of("KEY", "LIGHT", "REF", "SKIP");
 
   private final RestClient restClient;
   private final String model;
@@ -54,15 +59,15 @@ public class OpenAiGuideClient {
         .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey);
   }
 
-  /** instruction: 지시문(system), input: 프로필과 글(user) */
-  public String generate(String instruction, String input) {
+  /** instruction: 지시문(system), input: 프로필과 글(user), sectionCount: 응답 스키마에 넣을 구간 수 */
+  public String generate(String instruction, String input, int sectionCount) {
     if (model.isBlank()) {
       throw new BusinessException(GuideErrorCode.AI_UNAVAILABLE);
     }
 
     for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
-        return callOpenAi(instruction, input);
+        return callOpenAi(instruction, input, sectionCount);
       } catch (HttpClientErrorException.TooManyRequests | HttpServerErrorException exception) {
         // 429(호출 한도)와 5xx는 잠깐 뒤 다시 부르면 되는 경우가 많다
         if (attempt == MAX_ATTEMPTS) {
@@ -85,7 +90,7 @@ public class OpenAiGuideClient {
     throw new BusinessException(GuideErrorCode.AI_UNAVAILABLE);
   }
 
-  private String callOpenAi(String instruction, String input) {
+  private String callOpenAi(String instruction, String input, int sectionCount) {
     JsonNode response =
         restClient
             .post()
@@ -98,9 +103,8 @@ public class OpenAiGuideClient {
                     List.of(
                         Map.of("role", "system", "content", instruction),
                         Map.of("role", "user", "content", input)),
-                    // 지시문에 "JSON"이라는 말이 있어야 이 형식을 쓸 수 있다 (prompts/guide-v1.txt)
                     "response_format",
-                    Map.of("type", "json_object")))
+                    responseFormat(sectionCount)))
             .retrieve()
             .body(JsonNode.class);
 
@@ -112,6 +116,46 @@ public class OpenAiGuideClient {
       throw new BusinessException(GuideErrorCode.AI_UNAVAILABLE);
     }
     return text;
+  }
+
+  /**
+   * 답의 모양을 구간 수에 맞춰 강제한다. badges는 "1"~"N"을 모두 필수로, 값은 배지 4개 중 하나로. 구간이 너무 많으면 스키마 한도 때문에
+   * json_object로 둔다. 이때는 지시문에 "JSON"이라는 말이 있어야 한다 (prompts/guide-v1.txt).
+   */
+  static Map<String, Object> responseFormat(int sectionCount) {
+    if (sectionCount < 1 || sectionCount > SCHEMA_MAX_SECTIONS) {
+      return Map.of("type", "json_object");
+    }
+
+    Map<String, Object> badgeProperties = new LinkedHashMap<>();
+    List<String> badgeRequired = new ArrayList<>();
+    for (int seq = 1; seq <= sectionCount; seq++) {
+      badgeProperties.put(String.valueOf(seq), Map.of("type", "string", "enum", BADGES));
+      badgeRequired.add(String.valueOf(seq));
+    }
+    Map<String, Object> badges = new LinkedHashMap<>();
+    badges.put("type", "object");
+    badges.put("properties", badgeProperties);
+    badges.put("required", badgeRequired);
+    badges.put("additionalProperties", false);
+
+    Map<String, Object> properties = new LinkedHashMap<>();
+    properties.put("badges", badges);
+    properties.put("lookFor", Map.of("type", "string"));
+    properties.put("readingOrder", Map.of("type", "string"));
+    properties.put("nextStudy", Map.of("type", "string"));
+
+    Map<String, Object> schema = new LinkedHashMap<>();
+    schema.put("type", "object");
+    schema.put("properties", properties);
+    schema.put("required", List.of("badges", "lookFor", "readingOrder", "nextStudy"));
+    schema.put("additionalProperties", false);
+
+    return Map.of(
+        "type",
+        "json_schema",
+        "json_schema",
+        Map.of("name", "reading_guide", "strict", true, "schema", schema));
   }
 
   private void sleep(long millis) {

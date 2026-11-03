@@ -2,7 +2,9 @@ package com.recu.guide.features.guide.ctrl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -75,7 +77,7 @@ class GuideControllerTest {
   void createsNewGuide() throws Exception {
     when(userClient.getProfile(USER_ID)).thenReturn(profile(3));
     when(contentClient.getGuideInput(POST_ID)).thenReturn(postInput());
-    when(aiClient.generate(anyString(), anyString())).thenReturn(AI_ANSWER);
+    when(aiClient.generate(anyString(), anyString(), anyInt())).thenReturn(AI_ANSWER);
 
     requestGuide()
         .andExpect(status().isOk())
@@ -147,13 +149,13 @@ class GuideControllerTest {
   }
 
   @Test
-  @DisplayName("AI에게 구간 수, 구간 태그, 빈칸 틀을 담아 보낸다")
+  @DisplayName("AI에게 구간 수, 구간 태그, 빈칸 틀을 담아 보내고, 응답 스키마용 구간 수도 넘긴다")
   void sendsSectionCountAndTags() throws Exception {
     givenNewGuide();
 
     requestGuide().andExpect(status().isOk());
     ArgumentCaptor<String> input = ArgumentCaptor.forClass(String.class);
-    verify(aiClient).generate(anyString(), input.capture());
+    verify(aiClient).generate(anyString(), input.capture(), eq(2));
     assertThat(input.getValue())
         .contains("total=\"2\"")
         .contains("<section seq=\"1\" heading=\"들어가며\">\n내용 1\n</section>")
@@ -250,7 +252,7 @@ class GuideControllerTest {
   private void givenNewGuide(String aiAnswer) {
     when(userClient.getProfile(USER_ID)).thenReturn(profile(3));
     when(contentClient.getGuideInput(POST_ID)).thenReturn(postInput());
-    when(aiClient.generate(anyString(), anyString())).thenReturn(aiAnswer);
+    when(aiClient.generate(anyString(), anyString(), anyInt())).thenReturn(aiAnswer);
   }
 
   private ResultActions requestGuide() throws Exception {

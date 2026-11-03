@@ -84,7 +84,8 @@ public class GuideService {
     List<Section> sections = post.sections();
     GeneratedGuide generated =
         parseAndValidate(
-            callAi(loadPrompt(), buildUserPrompt(profile, post, sections)), sections.size());
+            callAi(loadPrompt(), buildUserPrompt(profile, post, sections), sections.size()),
+            sections.size());
 
     AiGuideEntity guide =
         AiGuideEntity.builder()
@@ -117,9 +118,9 @@ public class GuideService {
     return response(saved, profile, false);
   }
 
-  private String callAi(String instruction, String input) {
+  private String callAi(String instruction, String input, int sectionCount) {
     try {
-      return aiClient.generate(instruction, input);
+      return aiClient.generate(instruction, input, sectionCount);
     } catch (Exception exception) {
       throw aiUnavailable();
     }
