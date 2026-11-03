@@ -5,7 +5,10 @@
 앱·Gateway는 포함하지 않습니다. `local` 프로필에서는 IDE로 서비스를 띄우고, 여기 인프라만 compose로 올립니다.
 
 서비스 이름 `mariadb`, `kafka`는 설정 저장소의 `application-dev.yml`과 같아야 합니다.
-지금 Kafka는 host(local)용 `localhost` advertised입니다. dev용 Kafka 리스너는 앱을 compose에 넣을 때 추가합니다.
+
+Kafka는 리스너가 두 개입니다.
+- 호스트(IDE, local 프로필): `localhost:9092`
+- compose 안 컨테이너(dev 프로필): `kafka:9092`
 
 ## 준비
 
@@ -37,7 +40,8 @@ docker compose -f infra/compose.yaml --env-file .env up -d
 | 구성 요소 | 주소 |
 | --- | --- |
 | MariaDB | `localhost:3306` |
-| Kafka | `localhost:9092` |
+| Kafka (호스트, IDE) | `localhost:9092` |
+| Kafka (컨테이너 안) | `kafka:9092` |
 
 ```bash
 docker compose -f infra/compose.yaml --env-file .env ps
