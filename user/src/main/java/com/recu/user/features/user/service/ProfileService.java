@@ -53,10 +53,12 @@ public class ProfileService {
     }
 
     // app_user 저장
+    // 입력받은 값을 DB에 저장
     userRepository.save(
         UserEntity.builder()
             .user_id(userId)
-            .google_sub(user.getGoogle_sub())
+            .email(user.getEmail())
+            .password_hash(user.getPassword_hash())
             .name(user.getName())
             .career_years(request.getCareerYears())
             .profile_version(1)
@@ -163,7 +165,8 @@ public class ProfileService {
     userRepository.save(
         UserEntity.builder()
             .user_id(userId)
-            .google_sub(user.getGoogle_sub())
+            .email(user.getEmail())
+            .password_hash(user.getPassword_hash())
             .name(user.getName())
             .career_years(request.getCareerYears())
             .profile_version(nextProfileVersion)

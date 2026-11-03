@@ -18,6 +18,8 @@ dependencies {
     runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
     testRuntimeOnly 'com.h2database:h2'   // 테스트만 H2. MariaDB 없이도 gradlew test 가능 (원본과 같음)
 
+    // 비밀번호 BCrypt 해시만 쓴다. Spring Security 전체는 넣지 않는다 (#60)
+    implementation 'org.springframework.security:spring-security-crypto'
     // JWT 발급 (원본 0.11 API). 검증은 Gateway가 맡는다
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'

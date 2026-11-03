@@ -26,7 +26,10 @@ public class UserEntity {
   private Long user_id;
 
   @Column(nullable = false, unique = true, length = 100)
-  private String google_sub;
+  private String email;
+
+  @Column(name = "password_hash", nullable = false, length = 255)
+  private String password_hash;
 
   @Column(nullable = false, length = 50)
   private String name;

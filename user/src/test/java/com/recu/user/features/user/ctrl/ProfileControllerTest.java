@@ -65,7 +65,8 @@ class ProfileControllerTest {
         users
             .save(
                 UserEntity.builder()
-                    .google_sub("test-sub")
+                    .email("test@example.com")
+                    .password_hash("test-password-hash")
                     .name("테스트")
                     .created_at(LocalDate.now())
                     .updated_at(LocalDate.now())
