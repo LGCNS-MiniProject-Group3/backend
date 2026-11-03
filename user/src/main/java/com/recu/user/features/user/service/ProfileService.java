@@ -18,6 +18,7 @@ import com.recu.user.error.UserErrorCode;
 import com.recu.user.features.user.domain.dto.ProfileRequestDTO;
 import com.recu.user.features.user.domain.dto.ProfileResponseDTO;
 import com.recu.user.features.user.domain.dto.ProfileResponseDTO.SkillResponseDTO;
+import com.recu.user.messaging.ProfileSaved;
 import jakarta.transaction.Transactional;
 import java.time.LocalDate;
 import java.util.Collection;
@@ -27,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -38,6 +40,7 @@ public class ProfileService {
   private final UserJobFieldRepository userJobFieldRepository;
   private final UserSkillRepository userSkillRepository;
   private final ContentClient contentClient;
+  private final ApplicationEventPublisher events;
 
   @Transactional
   public ProfileResponseDTO setProfile(Long userId, ProfileRequestDTO request) {
@@ -53,10 +56,12 @@ public class ProfileService {
     }
 
     // app_user 저장
+    // 입력받은 값을 DB에 저장
     userRepository.save(
         UserEntity.builder()
             .user_id(userId)
-            .google_sub(user.getGoogle_sub())
+            .email(user.getEmail())
+            .password_hash(user.getPassword_hash())
             .name(user.getName())
             .career_years(request.getCareerYears())
             .profile_version(1)
@@ -104,6 +109,9 @@ public class ProfileService {
         userSkillRepository.findAllByUserAndSkillType(user, "WANT").stream()
             .map(skill -> skill.getId().getTechTagId())
             .collect(collectingAndThen(toList(), this::skillsWithNames));
+
+    // 커밋된 뒤에 B(recu.profile.updated)를 보낸다. 롤백되면 보내지 않는다 (ProfileUpdatedPublisher)
+    events.publishEvent(new ProfileSaved(userId));
 
     return ProfileResponseDTO.builder()
         .name(user.getName())
@@ -163,7 +171,8 @@ public class ProfileService {
     userRepository.save(
         UserEntity.builder()
             .user_id(userId)
-            .google_sub(user.getGoogle_sub())
+            .email(user.getEmail())
+            .password_hash(user.getPassword_hash())
             .name(user.getName())
             .career_years(request.getCareerYears())
             .profile_version(nextProfileVersion)
@@ -218,6 +227,9 @@ public class ProfileService {
         userSkillRepository.findAllByUserAndSkillType(user, "WANT").stream()
             .map(skill -> skill.getId().getTechTagId())
             .collect(collectingAndThen(toList(), this::skillsWithNames));
+
+    // 커밋된 뒤에 B(recu.profile.updated)를 보낸다. 롤백되면 보내지 않는다 (ProfileUpdatedPublisher)
+    events.publishEvent(new ProfileSaved(userId));
 
     return ProfileResponseDTO.builder()
         .name(user.getName())

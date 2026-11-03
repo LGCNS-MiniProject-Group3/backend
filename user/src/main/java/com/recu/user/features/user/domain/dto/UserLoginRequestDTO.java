@@ -1,5 +1,6 @@
 package com.recu.user.features.user.domain.dto;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,6 +15,8 @@ import lombok.ToString;
 @AllArgsConstructor
 public class UserLoginRequestDTO {
 
-  // Google userinfo API에서 사용자를 확인할 OAuth 2.0 access token
-  @NotBlank private String googleAccessToken;
+  @NotBlank @Email private String email;
+
+  // 길이는 가입할 때만 검사한다. 짧은 비밀번호도 400이 아니라 401(INVALID_CREDENTIALS)로 답한다
+  @NotBlank private String password;
 }
