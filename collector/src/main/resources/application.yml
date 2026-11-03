@@ -2,7 +2,7 @@ spring:
   application:
     name: collector
   config:
-    # 나머지 설정(Gemini 키, 분류 조건, Eureka 주소)은 Config Server가 설정 저장소에서 내려준다.
+    # 나머지 설정(분류 조건, Eureka 주소)은 Config Server가 설정 저장소에서 내려준다.
     # optional은 테스트에서 Config를 끌 수 있게 하려는 것. 실행 중에는 fail-fast라 Config가 꺼져 있으면 뜨지 않는다
     import: optional:configserver:${CONFIG_URL:http://localhost:8888}
   cloud:
@@ -11,3 +11,8 @@ spring:
 
 server:
   port: 8083
+
+# OpenAI 키는 설정 저장소에도 두지 않고 실행 환경의 .env(OPENAI_API_KEY)로만 받는다 (design.md 9장).
+# 비어 있어도 서비스는 뜨고, AI 호출만 실패한다
+openai:
+  api-key: ${OPENAI_API_KEY:}

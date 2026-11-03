@@ -1,5 +1,6 @@
 package com.recu.collector.features.collect.service;
 
+import com.recu.collector.client.ContentClient;
 import com.recu.collector.features.collect.domain.BlogSource;
 import com.recu.collector.features.collect.domain.SourceType;
 import com.recu.collector.features.collect.domain.dto.CollectedPost;
@@ -7,6 +8,7 @@ import com.recu.collector.features.collect.domain.dto.CompanyTarget;
 import com.recu.collector.features.collect.domain.dto.ImportedPost;
 import com.recu.collector.features.collect.domain.dto.TechDictionary;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -26,13 +28,17 @@ import org.springframework.stereotype.Service;
 public class WebCollectService {
 
   private static final Logger log = LoggerFactory.getLogger(WebCollectService.class);
-
+  private final ContentClient contentClient;
   private final ContentStub content;
   private final CollectService collectService;
   private final PostClassifier classifier;
 
   public WebCollectService(
-      ContentStub content, CollectService collectService, PostClassifier classifier) {
+      ContentClient contentClient,
+      ContentStub content,
+      CollectService collectService,
+      PostClassifier classifier) {
+    this.contentClient = contentClient;
     this.content = content;
     this.collectService = collectService;
     this.classifier = classifier;
@@ -66,8 +72,11 @@ public class WebCollectService {
     BlogSource source =
         new BlogSource(company.name(), SourceType.valueOf(company.feedType()), company.feedUrl());
 
+    // 이 기업에 이미 저장된 URL을 한 번에 받아 둔다 (글마다 Feign 호출하지 않음)
+    Set<String> existingUrls = new HashSet<>(contentClient.getCollectedUrls(company.companyId()));
+
     List<CollectedPost> received = collectService.collectOne(source);
-    List<CollectedPost> fresh = freshInWindow(received, source);
+    List<CollectedPost> fresh = freshInWindow(received, source, existingUrls);
 
     List<ImportedPost> rows = new ArrayList<>();
     List<String> extracted = new ArrayList<>();
@@ -89,14 +98,15 @@ public class WebCollectService {
   }
 
   /** 범위 안이고 표에 없는 글. 같은 주소가 두 번 오면 한 번만 둔다. */
-  private List<CollectedPost> freshInWindow(List<CollectedPost> received, BlogSource source) {
+  private List<CollectedPost> freshInWindow(
+      List<CollectedPost> received, BlogSource source, Set<String> existingUrls) {
     Set<String> seen = new LinkedHashSet<>();
     List<CollectedPost> fresh = new ArrayList<>();
     for (CollectedPost post : received) {
       if (post.url() == null
           || !source.covers(post.publishedAt())
           || !seen.add(post.url())
-          || content.existsByUrl(post.url())) {
+          || existingUrls.contains(post.url())) {
         continue;
       }
       fresh.add(post);

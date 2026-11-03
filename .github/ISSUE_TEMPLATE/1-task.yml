@@ -1,4 +1,4 @@
-name: 작업
+name: 작업 요청
 description: 기능 이전·추가, 설정 작업
 title: "[서비스] "
 labels: ["type:feat"]

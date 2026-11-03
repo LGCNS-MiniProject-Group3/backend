@@ -4,12 +4,17 @@ plugins {
 
 dependencies {
     implementation project(':common:common-web')
+    // B·C 수신으로 가이드 표시 사본을 고친다 (design.md 6장)
+    implementation project(':common:common-kafka')
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
 
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
+    // ⑦ 글 요약을 content에 묻는다 (design.md 5장)
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
     // API 문서 (원본과 같은 버전: Boot 3.4 짝)
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
 

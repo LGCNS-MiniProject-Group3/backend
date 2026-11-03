@@ -84,8 +84,8 @@ com.recu.content/
 
 ### 외부 API (`/api/**`)
 
-- **경로, 메서드, 요청·응답 필드는 원본([reference/api-spec.md](reference/api-spec.md))과 똑같이 유지해요.** 프론트는 Gateway 주소만 바꿔요. 바꿔야 하면 스펙 변경 이슈를 열어요.
-- 신규 외부 API는 수집 작업 조회 2개뿐이에요([design.md 7장](design.md#수집-작업-조회-신규-외부-api)). 이것도 스펙은 design.md가 기준이에요.
+- **기존 도메인 API**의 경로·메서드·요청·응답 필드는 원본([reference/api-spec.md](reference/api-spec.md))을 유지해요. 이메일·비밀번호 회원가입·로그인 API는 [design.md 4장](design.md#4-인증과-gateway)의 규격을 따라요. 그 밖의 변경은 스펙 변경 이슈를 열어요.
+- 인증 API 변경 규격은 [design.md 4장](design.md#4-인증과-gateway), 수집 작업 조회 API 2개의 규격은 [design.md 7장](design.md#수집-작업-조회-신규-외부-api)을 기준으로 해요.
 - 회원 번호는 `X-User-Id` 헤더에서 `common-web`의 도구로 받아요. 원본의 `@AuthenticationPrincipal Long userId`를 바꿔요. (1번 확정)
 
 ```java
@@ -205,4 +205,4 @@ public interface UserClient {
 | Gateway 필터 | 토큰 없음 401, 일반 사용자의 `/api/admin/**` 403, 클라이언트가 보낸 `X-User-Id` 제거 | 1번 |
 
 - 테스트 이름은 한국어로 써도 돼요. `@DisplayName("이미 저장한 글을 다시 저장하면 409")`
-- 외부 서비스(Gemini, Google, 블로그 사이트)를 실제로 부르는 테스트는 기본 실행에서 빼요.
+- 외부 서비스(OpenAI, Google, 블로그 사이트)를 실제로 부르는 테스트는 기본 실행에서 빼요.

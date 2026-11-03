@@ -15,4 +15,10 @@ dependencies {
 
     // 수집: RSS 피드와 글 본문 HTML 을 읽는다 (원본 features/collect)
     implementation 'org.jsoup:jsoup:1.21.1'
+
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
+    testRuntimeOnly 'com.h2database:h2'
+
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
 }

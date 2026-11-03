@@ -9,47 +9,49 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 
+/** 가이드 생성 AI 호출. OpenAI Chat Completions를 부른다 (design.md 9장 AI 호출 설정). */
 @Slf4j
 @Component
-public class GeminiGuideClient {
+public class OpenAiGuideClient {
 
   private static final int MAX_ATTEMPTS = 3;
   private static final long BACKOFF_MILLIS = 500;
 
   private final RestClient restClient;
-  private final String apiKey;
   private final String model;
   private final Sleeper sleeper;
 
   @Autowired
-  public GeminiGuideClient(
+  public OpenAiGuideClient(
       RestClient.Builder builder,
-      @Value("${gemini.api-key}") String apiKey,
-      @Value("${collect.classify.model:}") String model) {
+      @Value("${openai.api-key}") String apiKey,
+      @Value("${guide.model:}") String model) {
     SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
     requestFactory.setConnectTimeout(Duration.ofSeconds(5));
     requestFactory.setReadTimeout(Duration.ofSeconds(30));
-    this.restClient =
-        builder
-            .clone()
-            .baseUrl("https://generativelanguage.googleapis.com/v1beta")
-            .requestFactory(requestFactory)
-            .build();
-    this.apiKey = apiKey;
+    this.restClient = openAi(builder.clone(), apiKey).requestFactory(requestFactory).build();
     this.model = model;
     this.sleeper = Thread::sleep;
   }
 
-  GeminiGuideClient(RestClient restClient, String apiKey, String model, Sleeper sleeper) {
+  OpenAiGuideClient(RestClient restClient, String model, Sleeper sleeper) {
     this.restClient = restClient;
-    this.apiKey = apiKey;
     this.model = model;
     this.sleeper = sleeper;
+  }
+
+  /** 주소와 키. 테스트도 같은 설정을 쓰도록 나눴다 */
+  static RestClient.Builder openAi(RestClient.Builder builder, String apiKey) {
+    return builder
+        .baseUrl("https://api.openai.com/v1")
+        .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey);
   }
 
   public String generate(String prompt) {
@@ -59,54 +61,50 @@ public class GeminiGuideClient {
 
     for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
-        return callGemini(prompt);
-      } catch (HttpServerErrorException.ServiceUnavailable exception) {
+        return callOpenAi(prompt);
+      } catch (HttpClientErrorException.TooManyRequests | HttpServerErrorException exception) {
+        // 429(호출 한도)와 5xx는 잠깐 뒤 다시 부르면 되는 경우가 많다
         if (attempt == MAX_ATTEMPTS) {
-          log.error("Gemini guide request failed after {} attempts", MAX_ATTEMPTS);
+          log.error("OpenAI guide request failed after {} attempts", MAX_ATTEMPTS);
           throw new BusinessException(GuideErrorCode.AI_UNAVAILABLE);
         }
-        log.warn("Gemini guide request returned 503. retry={}/{}", attempt + 1, MAX_ATTEMPTS);
+        log.warn(
+            "OpenAI guide request returned {}. retry={}/{}",
+            exception.getStatusCode().value(),
+            attempt + 1,
+            MAX_ATTEMPTS);
         sleep(BACKOFF_MILLIS * attempt);
       } catch (BusinessException exception) {
         throw exception;
       } catch (Exception exception) {
-        log.error("Gemini guide request failed. type={}", exception.getClass().getName());
+        log.error("OpenAI guide request failed. type={}", exception.getClass().getName());
         throw new BusinessException(GuideErrorCode.AI_UNAVAILABLE);
       }
     }
     throw new BusinessException(GuideErrorCode.AI_UNAVAILABLE);
   }
 
-  private String callGemini(String prompt) {
+  private String callOpenAi(String prompt) {
     JsonNode response =
         restClient
             .post()
-            .uri(
-                uriBuilder ->
-                    uriBuilder
-                        .path("/models/{model}:generateContent")
-                        .queryParam("key", apiKey)
-                        .build(model))
+            .uri("/chat/completions")
             .body(
                 Map.of(
-                    "contents",
-                    List.of(Map.of("parts", List.of(Map.of("text", prompt)))),
-                    "generationConfig",
-                    Map.of("responseMimeType", "application/json")))
+                    "model",
+                    model,
+                    "messages",
+                    List.of(Map.of("role", "user", "content", prompt)),
+                    // 지시문에 "JSON"이라는 말이 있어야 이 형식을 쓸 수 있다 (prompts/guide-v1.txt)
+                    "response_format",
+                    Map.of("type", "json_object")))
             .retrieve()
             .body(JsonNode.class);
 
     String text =
         response == null
             ? null
-            : response
-                .path("candidates")
-                .path(0)
-                .path("content")
-                .path("parts")
-                .path(0)
-                .path("text")
-                .textValue();
+            : response.path("choices").path(0).path("message").path("content").textValue();
     if (text == null) {
       throw new BusinessException(GuideErrorCode.AI_UNAVAILABLE);
     }

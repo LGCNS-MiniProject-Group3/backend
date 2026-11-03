@@ -6,8 +6,7 @@ USE recu_user;
 
 CREATE TABLE IF NOT EXISTS app_user (
   user_id         BIGINT       NOT NULL AUTO_INCREMENT,
-  email           VARCHAR(100) NOT NULL,
-    password_hash   VARCHAR(255) NOT NULL,
+  google_sub      VARCHAR(100) NOT NULL,
   name            VARCHAR(50)  NOT NULL,
   career_years    INT          NULL,
   profile_version INT          NOT NULL DEFAULT 0,
@@ -16,6 +15,7 @@ CREATE TABLE IF NOT EXISTS app_user (
   created_at      DATE         NOT NULL,
   updated_at      DATE         NOT NULL,
   PRIMARY KEY (user_id),
+  UNIQUE KEY uk_app_user_google_sub (google_sub)
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS user_job_field (
