@@ -7,6 +7,7 @@ import com.recu.bookmark.database.entity.BookmarkEntity;
 import com.recu.bookmark.error.BookmarkErrorCode;
 import com.recu.bookmark.features.bookmark.domain.dto.BookmarkResponseDTO;
 import com.recu.bookmark.features.bookmark.repository.BookmarkRepository;
+import com.recu.bookmark.features.guideflag.service.UserGuideFlagService;
 import com.recu.common.web.error.BusinessException;
 import com.recu.common.web.error.CommonErrorCode;
 import feign.FeignException;
@@ -15,6 +16,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,7 @@ public class BookmarkService {
 
   private final BookmarkRepository bookmarkRepository;
   private final ContentClient contentClient;
+  private final UserGuideFlagService guideFlags;
 
   @Transactional
   public BookmarkResponseDTO addBookmark(Long userId, Long postId) {
@@ -65,15 +68,23 @@ public class BookmarkService {
     Map<Long, PostSummaryResponseDTO> summaries =
         contentClient.getSummaries(new PostSummariesRequestDTO(postIds)).stream()
             .collect(Collectors.toMap(PostSummaryResponseDTO::postId, Function.identity()));
+    // "가이드 있음"은 B·C 수신으로 채운 bookmark의 사본에서 읽는다 (원본은 ai_guide 표를 직접 읽었다)
+    Set<Long> guided = guideFlags.guidedPostIds(userId, postIds);
 
     List<BookmarkResponseDTO> bookmarks =
         bookmarkEntities.stream()
-            .map(bookmark -> card(bookmark, summaries.get(bookmark.getBlogPostId())))
+            .map(
+                bookmark ->
+                    card(
+                        bookmark,
+                        summaries.get(bookmark.getBlogPostId()),
+                        guided.contains(bookmark.getBlogPostId())))
             .toList();
     return Map.of("bookmarks", bookmarks, "count", bookmarks.size());
   }
 
-  private BookmarkResponseDTO card(BookmarkEntity bookmark, PostSummaryResponseDTO post) {
+  private BookmarkResponseDTO card(
+      BookmarkEntity bookmark, PostSummaryResponseDTO post, boolean hasGuide) {
     return BookmarkResponseDTO.builder()
         .bookmarkId(bookmark.getBookmark_id())
         .postId(bookmark.getBlogPostId())
@@ -85,8 +96,7 @@ public class BookmarkService {
         .skills(post.skills())
         .publishedAt(post.publishedAt())
         .savedAt(bookmark.getCreated_at().atOffset(KST))
-        // TODO(#62): bookmark의 user_guide_flag 사본(B·C 수신)으로 채운다
-        .hasGuide(false)
+        .hasGuide(hasGuide)
         .build();
   }
 

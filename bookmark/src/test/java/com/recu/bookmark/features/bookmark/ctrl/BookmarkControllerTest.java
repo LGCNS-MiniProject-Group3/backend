@@ -16,6 +16,8 @@ import com.recu.bookmark.client.dto.PostSummariesRequestDTO;
 import com.recu.bookmark.client.dto.PostSummaryResponseDTO;
 import com.recu.bookmark.database.entity.BookmarkEntity;
 import com.recu.bookmark.features.bookmark.repository.BookmarkRepository;
+import com.recu.bookmark.features.guideflag.repository.UserGuideFlagRepository;
+import com.recu.bookmark.features.guideflag.service.UserGuideFlagService;
 import feign.FeignException;
 import feign.Request;
 import java.nio.charset.StandardCharsets;
@@ -43,11 +45,14 @@ class BookmarkControllerTest {
 
   @Autowired MockMvc mockMvc;
   @Autowired BookmarkRepository bookmarkRepository;
+  @Autowired UserGuideFlagService guideFlags;
+  @Autowired UserGuideFlagRepository guideFlagRepository;
   @MockitoBean ContentClient contentClient;
 
   @BeforeEach
   void setUp() {
     bookmarkRepository.deleteAll();
+    guideFlagRepository.deleteAll();
   }
 
   @Test
@@ -84,6 +89,24 @@ class BookmarkControllerTest {
         .andExpect(jsonPath("$.bookmarks[0].createdAt").doesNotExist())
         .andExpect(jsonPath("$.bookmarks[1].postId").value(5));
     verify(contentClient).getSummaries(new PostSummariesRequestDTO(List.of(7L, 5L)));
+  }
+
+  @Test
+  @DisplayName("가이드 표시 사본에 있는 글만 hasGuide true, 다른 회원 표시는 섞이지 않는다")
+  void listHasGuideFromFlags() throws Exception {
+    save(5L, LocalDateTime.of(2026, 11, 1, 9, 0));
+    save(7L, LocalDateTime.of(2026, 11, 2, 9, 0));
+    guideFlags.addFlag(USER_ID, 7L);
+    guideFlags.addFlag(99L, 5L); // 다른 회원의 표시
+    when(contentClient.getSummaries(any())).thenReturn(List.of(summary(7L), summary(5L)));
+
+    mockMvc
+        .perform(get("/api/bookmarks").header("X-User-Id", USER_ID))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.bookmarks[0].postId").value(7))
+        .andExpect(jsonPath("$.bookmarks[0].hasGuide").value(true))
+        .andExpect(jsonPath("$.bookmarks[1].postId").value(5))
+        .andExpect(jsonPath("$.bookmarks[1].hasGuide").value(false));
   }
 
   @Test
