@@ -50,7 +50,7 @@ class PostCollectedEventMapperTest {
   }
 
   @Test
-  @DisplayName("대소문자만 다른 태그는 하나로, rank는 작은 쪽")
+  @DisplayName("대소문자만 다른 태그는 하나로, rank는 넣은 순서대로 빈 번호 없이")
   void 태그_중복_rank() {
     // resolver=null → raw 이름 그대로 (Kafka / kafka)
     ImportedPost.Ai ai =
@@ -63,7 +63,7 @@ class PostCollectedEventMapperTest {
     assertThat(event.tags().get(0).name()).isEqualToIgnoringCase("Kafka");
     assertThat(event.tags().get(0).rank()).isEqualTo(1); // 첫 Kafka
     assertThat(event.tags().get(1).name()).isEqualTo("Redis");
-    assertThat(event.tags().get(1).rank()).isEqualTo(3); // 세 번째 등장 위치
+    assertThat(event.tags().get(1).rank()).isEqualTo(2);
   }
 
   @Test

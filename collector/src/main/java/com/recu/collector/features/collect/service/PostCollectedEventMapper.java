@@ -7,7 +7,6 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -91,18 +90,12 @@ public class PostCollectedEventMapper {
       }
 
       String key = name.toLowerCase(Locale.ROOT);
-      PostCollectedEvent.Tag existing = byLower.get(key);
-      if (existing == null) {
-        byLower.put(key, new PostCollectedEvent.Tag(name, rank));
-      } else if (rank < existing.rank()) {
-        byLower.put(key, new PostCollectedEvent.Tag(existing.name(), rank));
+      if (!byLower.containsKey(key)) {
+        byLower.put(key, new PostCollectedEvent.Tag(name, rank++));
       }
-      rank++;
     }
 
-    return byLower.values().stream()
-        .sorted(Comparator.comparingInt(PostCollectedEvent.Tag::rank))
-        .toList();
+    return List.copyOf(byLower.values());
   }
 
   private List<PostCollectedEvent.Section> toSections(ImportedPost row) {

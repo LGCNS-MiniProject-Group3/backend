@@ -6,13 +6,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-/*
- A recu.post.collected 발행 (design.md 6장). 수집·분류가 끝난 글 1편을 보낸다.
-
- <p>키는 url이다(공통 모듈이 맞춤). 보내기 직전에 실패하면 false를 돌려 호출 쪽이 newPostCount에 넣지
- 않게 한다. 브로커 전송이 나중에 실패하면 로그만 남기고, 재시도는 V2다.
-*/
-
+/**
+ * A recu.post.collected 발행 (design.md 6장). 수집·분류가 끝난 글 1편을 보낸다.
+ *
+ * <p>키는 url이다(공통 모듈이 맞춤). 보내기 직전에 실패하면 false를 돌려 호출 쪽이 newPostCount에 넣지 않게 한다. 브로커 전송이 나중에 실패하면 로그만
+ * 남기고, 재시도는 V2다.
+ */
 @Component
 public class PostCollectedPublisher {
 

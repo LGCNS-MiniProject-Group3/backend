@@ -72,9 +72,15 @@ public class PostImportService {
         continue;
       }
       PostCollectedEvent event = mapper.toEvent(row, companyId, resolver);
-      if (publisher.publish(event)) {
-        published++;
+      if (!publisher.publish(event)) {
+        log.error(
+            "발행이 실패해 import를 멈춥니다. 발행 {}편 / 전체 {}편, 멈춘 글 url={}",
+            published,
+            rows.size(),
+            row.url());
+        break;
       }
+      published++;
     }
     return new ImportPublishResult(published);
   }

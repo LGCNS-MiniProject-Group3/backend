@@ -49,15 +49,25 @@ public class WebCollectService {
     this.classifier = classifier;
   }
 
-  /** 한 기업의 결과. 로그에 남긴다. */
+  /** 한 기업의 결과. 로그에 남긴다. publishStopped면 발행이 실패해 남은 글을 보내지 않았다. */
   public record CompanyResult(
-      String company, int received, int newInWindow, int classified, int publishedCount) {}
+      String company,
+      int received,
+      int newInWindow,
+      int classified,
+      int publishedCount,
+      boolean publishStopped) {}
 
   public List<CompanyResult> run(List<CompanyTarget> targets) {
     List<CompanyResult> results = new ArrayList<>();
     for (CompanyTarget company : targets) {
       try {
-        results.add(runOne(company));
+        CompanyResult result = runOne(company);
+        results.add(result);
+        if (result.publishStopped()) {
+          log.error("{} 에서 발행이 실패해 남은 기업 수집을 멈춥니다", company.name());
+          break;
+        }
       } catch (Exception e) {
         log.warn("{} 웹 수집 실패, 다음 기업으로 넘어갑니다: {}", company.name(), e.getMessage());
       }
@@ -68,7 +78,7 @@ public class WebCollectService {
   CompanyResult runOne(CompanyTarget company) {
     if (company.feedUrl() == null || company.feedType() == null) {
       log.warn("{} 수집 주소가 없어 건너뜁니다", company.name());
-      return new CompanyResult(company.name(), 0, 0, 0, 0);
+      return new CompanyResult(company.name(), 0, 0, 0, 0, false);
     }
     BlogSource source =
         new BlogSource(company.name(), SourceType.valueOf(company.feedType()), company.feedUrl());
@@ -96,15 +106,25 @@ public class WebCollectService {
     Long companyId = company.companyId();
 
     int published = 0;
+    boolean stopped = false;
     for (ImportedPost row : rows) {
       PostCollectedEvent event = mapper.toEvent(row, companyId, resolver);
-      if (publisher.publish(event)) {
-        published++;
+      if (!publisher.publish(event)) {
+        log.error(
+            "{} 발행이 실패해 멈춥니다. 발행 {}편 / 전체 {}편, 멈춘 글 url={}",
+            company.name(),
+            published,
+            rows.size(),
+            row.url());
+        stopped = true;
+        break;
       }
+      published++;
     }
 
     CompanyResult result =
-        new CompanyResult(company.name(), received.size(), fresh.size(), classified, published);
+        new CompanyResult(
+            company.name(), received.size(), fresh.size(), classified, published, stopped);
     log.info("웹 수집 {}", result);
     return result;
   }
