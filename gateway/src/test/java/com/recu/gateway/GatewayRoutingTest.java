@@ -179,14 +179,27 @@ class GatewayRoutingTest {
 
   @Test
   void 공개_경로는_토큰_없이_통과한다() {
-    client.post().uri("/api/auth/google").exchange().expectStatus().isOk();
     client.post().uri("/api/auth/refresh").exchange().expectStatus().isOk();
     client.get().uri("/api/tech-tags").exchange().expectStatus().isOk();
     client.get().uri("/api/companies/1").exchange().expectStatus().isOk();
   }
 
   @Test
+  void 회원가입과_로그인은_토큰_없이_user로_간다() {
+    for (String path : List.of("/api/auth/signup", "/api/auth/login")) {
+      received.clear();
+      client.post().uri(path).exchange().expectStatus().isOk();
+
+      assertThat(received.get("service")).as(path).isEqualTo("user");
+      assertThat(received.get("path")).as(path).isEqualTo(path);
+      assertThat(received).as(path).doesNotContainKey("x-user-id");
+    }
+  }
+
+  @Test
   void 공개_경로와_비슷하지만_토큰이_필요한_경로() {
+    // Google 로그인은 없어져서 더는 공개가 아니다 (#60)
+    client.post().uri("/api/auth/google").exchange().expectStatus().isUnauthorized();
     client.post().uri("/api/auth/logout").exchange().expectStatus().isUnauthorized();
     client.get().uri("/api/companies").exchange().expectStatus().isUnauthorized();
     client.get().uri("/api/companies/1/posts").exchange().expectStatus().isUnauthorized();
@@ -291,7 +304,7 @@ class GatewayRoutingTest {
   void 응답의_토큰_헤더를_브라우저에_노출한다() {
     client
         .post()
-        .uri("/api/auth/google")
+        .uri("/api/auth/login")
         .header(HttpHeaders.ORIGIN, "http://localhost:5173")
         .exchange()
         .expectStatus()
