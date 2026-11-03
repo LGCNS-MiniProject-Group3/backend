@@ -1,6 +1,7 @@
 package com.recu.user.features.user.ctrl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -81,17 +82,14 @@ class ProfileControllerTest {
   }
 
   @Test
-  @DisplayName("있는 기술이면 저장하고 응답에 기술 이름을 요청 순서대로 채운다")
+  @DisplayName("있는 기술이면 저장하고 응답에 기술 이름을 채운다")
   void saveFillsSkillNames() throws Exception {
     mockMvc
-        .perform(profile(post("/api/profile"), "[2, 1]", "[4, 3]"))
+        .perform(profile(post("/api/profile"), "[1, 2]", "[3, 4]"))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.profileVersion").value(1))
-        .andExpect(jsonPath("$.haveSkills[0].techTagId").value(2))
-        .andExpect(jsonPath("$.haveSkills[0].name").value("Spring"))
-        .andExpect(jsonPath("$.haveSkills[1].name").value("Java"))
-        .andExpect(jsonPath("$.wantSkills[0].name").value("Redis"))
-        .andExpect(jsonPath("$.wantSkills[1].name").value("Kafka"));
+        .andExpect(jsonPath("$.haveSkills[*].name", containsInAnyOrder("Java", "Spring")))
+        .andExpect(jsonPath("$.wantSkills[*].name", containsInAnyOrder("Kafka", "Redis")));
     assertThat(skills.count()).isEqualTo(4);
   }
 

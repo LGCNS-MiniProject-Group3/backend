@@ -280,7 +280,7 @@ public class ProfileService {
     return techTags(requested).size() < requested.size();
   }
 
-  // 원본은 user_skill → tech_tag @ManyToOne으로 이름을 읽었다. 지금은 ③ 응답으로 채우고 요청 번호 순서를 지킨다
+  // 원본은 user_skill → tech_tag @ManyToOne으로 이름을 읽었다. 지금은 ③ 응답으로 채우고 넘겨받은 번호 순서를 지킨다
   private List<SkillResponseDTO> skillsWithNames(List<Long> techTagIds) {
     if (techTagIds.isEmpty()) {
       return List.of();
