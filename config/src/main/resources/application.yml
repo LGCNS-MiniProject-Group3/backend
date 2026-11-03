@@ -32,3 +32,7 @@ management:
         # 8888 포트는 외부에 열지 않고 Gateway 라우트에도 없어서 내부에서만 부른다
         # prometheus: Prometheus가 지표를 가져간다 (V2 모니터링)
         include: health,busrefresh,prometheus
+  metrics:
+    tags:
+      # 다른 서비스와 같은 라벨. 설정 저장소를 읽지 않아서 여기 둔다 (설정 저장소 application.yml과 같은 값)
+      application: ${spring.application.name}

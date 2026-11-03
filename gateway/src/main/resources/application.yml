@@ -8,6 +8,9 @@ spring:
   cloud:
     config:
       fail-fast: true
+  # WebFlux는 요청 처리 중 스레드가 바뀌어 로그에 traceId가 빠진다. Reactor 문맥으로 traceId를 넘겨 로그에 찍는다
+  reactor:
+    context-propagation: auto
 
 server:
   port: 8000

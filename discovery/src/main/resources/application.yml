@@ -21,3 +21,7 @@ management:
     web:
       exposure:
         include: health,prometheus
+  metrics:
+    tags:
+      # 다른 서비스와 같은 라벨. 설정 저장소를 읽지 않아서 여기 둔다 (설정 저장소 application.yml과 같은 값)
+      application: ${spring.application.name}
