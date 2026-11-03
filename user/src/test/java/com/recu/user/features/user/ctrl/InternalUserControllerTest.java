@@ -159,7 +159,8 @@ class InternalUserControllerTest {
   private UserEntity user(Integer careerYears, int profileVersion) {
     return users.save(
         UserEntity.builder()
-            .google_sub("test-sub")
+            .email("test-" + java.util.UUID.randomUUID() + "@example.com")
+            .password_hash("test-password-hash")
             .name("테스트")
             .career_years(careerYears)
             .profile_version(profileVersion)
