@@ -152,10 +152,6 @@ public class GuideService {
         }
       }
 
-      if (sectionCount > 1 && keySections.size() == sectionCount) {
-        throw aiUnavailable();
-      }
-
       GeneratedGuide generated =
           new GeneratedGuide(
               keySections, // focusSections = KEY 배지의 구간 번호

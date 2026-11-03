@@ -132,6 +132,21 @@ class GuideControllerTest {
   }
 
   @Test
+  @DisplayName("모든 구간이 KEY인 답도 저장하고 200, KEY 목록은 모든 구간 번호")
+  void allKeyAnswer() throws Exception {
+    givenNewGuide(
+        "{\"badges\":{\"1\":\"KEY\",\"2\":\"KEY\"},"
+            + "\"lookFor\":\"볼 부분\",\"readingOrder\":\"읽는 순서\",\"nextStudy\":\"이어서\"}");
+
+    requestGuide()
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.focusSections.length()").value(2))
+        .andExpect(jsonPath("$.focusSections[0]").value(1))
+        .andExpect(jsonPath("$.focusSections[1]").value(2));
+    assertThat(guideRepository.count()).isEqualTo(1);
+  }
+
+  @Test
   @DisplayName("AI에게 구간 수, 구간 태그, 빈칸 틀을 담아 보낸다")
   void sendsSectionCountAndTags() throws Exception {
     givenNewGuide();
