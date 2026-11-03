@@ -3,10 +3,25 @@ spring:
   config:
     activate:
       on-profile: test
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:recu_collector;MODE=MariaDB;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+  # Kafka 없이 돈다. 시작할 때 토픽을 만들러 가지 않고, 메시지 수신도 켜지 않는다
+  kafka:
+    admin:
+      auto-create: false
+    listener:
+      auto-startup: false
 
 eureka:
   client:
     enabled: false
 
-gemini:
+openai:
   api-key: test-key

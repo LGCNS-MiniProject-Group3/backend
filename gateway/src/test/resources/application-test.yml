@@ -1,0 +1,15 @@
+# gradlew test 용. Config Server·Eureka 없이 돈다. 설정 저장소 gateway.yml 대신 쓰는 값
+spring:
+  config:
+    activate:
+      on-profile: test
+
+eureka:
+  client:
+    enabled: false
+
+jwt:
+  secret: test-only-secret-key-must-be-at-least-32-bytes-long
+
+app:
+  cors-origins: http://localhost:5173

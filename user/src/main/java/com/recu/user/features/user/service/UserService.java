@@ -5,32 +5,76 @@ import com.recu.common.web.error.CommonErrorCode;
 import com.recu.user.database.entity.UserEntity;
 import com.recu.user.database.repository.UserRepository;
 import com.recu.user.error.UserErrorCode;
+import com.recu.user.features.user.domain.dto.UserLoginRequestDTO;
 import com.recu.user.features.user.domain.dto.UserLogoutRequestDTO;
 import com.recu.user.features.user.domain.dto.UserResponseDTO;
-import com.recu.user.features.user.service.GoogleUserInfoClient.GoogleUserInfo;
 import com.recu.user.token.JwtProvider;
 import com.recu.user.token.JwtProvider.JwtTokenException;
 import jakarta.transaction.Transactional;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
 public class UserService {
 
-  private final GoogleUserInfoClient googleUserInfoClient;
   private final UserRepository userRepository;
   private final JwtProvider jwtProvider;
+  private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
+  public record LoginResult(UserResponseDTO response, String accessToken, String refreshToken) {}
 
   @Transactional
-  public LoginResult signIn(String googleAccessToken) {
-    GoogleUserInfo info = googleUserInfoClient.getUserInfo(googleAccessToken);
+  public UserResponseDTO signUp(String email, String rawPassword, String name) {
+    if (userRepository.findByEmail(email).isPresent()) {
+      throw new BusinessException(UserErrorCode.EMAIL_ALREADY_EXISTS);
+    }
 
-    // 같은 Google 계정의 중복 가입을 막고, 첫 로그인일 때만 사용자를 만든다.
-    UserEntity user = userRepository.findByGoogleSub(info.id()).orElseGet(() -> createUser(info));
+    LocalDate now = LocalDate.now();
 
-    // Google 토큰은 사용자 확인에만 쓰고, 이후 인증에는 우리 JWT를 사용한다.
+    UserEntity user;
+    try {
+      // 비밀번호 원문은 저장하지 않고 BCrypt 해시만 둔다 (design.md 8장)
+      user =
+          userRepository.save(
+              UserEntity.builder()
+                  .email(email)
+                  .password_hash(passwordEncoder.encode(rawPassword))
+                  .name(name)
+                  .career_years(null)
+                  .profile_version(0)
+                  .refresh_token(null)
+                  .role("USER")
+                  .created_at(now)
+                  .updated_at(now)
+                  .build());
+    } catch (DataIntegrityViolationException exception) {
+      // 같은 이메일로 동시에 가입하면 위 확인을 둘 다 통과한다. email UNIQUE에 걸린 쪽도 409로 돌려준다
+      throw new BusinessException(UserErrorCode.EMAIL_ALREADY_EXISTS);
+    }
+
+    return UserResponseDTO.builder()
+        .userId(user.getUser_id())
+        .name(user.getName())
+        .profileCompleted(false)
+        .build();
+  }
+
+  @Transactional
+  public LoginResult signIn(UserLoginRequestDTO request) {
+    UserEntity user =
+        userRepository
+            .findByEmail(request.getEmail())
+            .orElseThrow(() -> new BusinessException(UserErrorCode.INVALID_CREDENTIALS));
+
+    // 없는 이메일과 틀린 비밀번호를 같은 오류로 돌려줘 가입 여부가 드러나지 않게 한다
+    if (!passwordEncoder.matches(request.getPassword(), user.getPassword_hash())) {
+      throw new BusinessException(UserErrorCode.INVALID_CREDENTIALS);
+    }
+
     String accessToken = jwtProvider.createAccessToken(user.getUser_id(), user.getRole());
     String refreshToken = jwtProvider.createRefreshToken(user.getUser_id());
 
@@ -46,25 +90,6 @@ public class UserService {
     return new LoginResult(response, accessToken, refreshToken);
   }
 
-  private UserEntity createUser(GoogleUserInfo info) {
-    LocalDate now = LocalDate.now();
-
-    // 신규 사용자는 프로필 미완료 상태로 생성한다.
-    return userRepository.save(
-        UserEntity.builder()
-            .google_sub(info.id())
-            .name(info.name())
-            .career_years(null)
-            .profile_version(0)
-            .role("USER")
-            .created_at(now)
-            .updated_at(now)
-            .build());
-  }
-
-  // 컨트롤러가 응답 바디와 두 토큰 헤더를 한 번에 조립하도록 묶은 내부 결과다.
-  public record LoginResult(UserResponseDTO response, String accessToken, String refreshToken) {}
-
   @Transactional
   public void signOut(Long userId, UserLogoutRequestDTO request) {
     String refreshToken = request.getRefreshToken();
@@ -73,7 +98,7 @@ public class UserService {
         .findById(userId)
         .filter(user -> refreshToken.equals(user.getRefresh_token()))
         .ifPresentOrElse(
-            (user) -> userRepository.updateRefreshToken(userId, null),
+            user -> userRepository.updateRefreshToken(userId, null),
             () -> {
               throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
             });

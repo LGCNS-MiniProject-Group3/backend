@@ -4,12 +4,16 @@ plugins {
 
 dependencies {
     implementation project(':common:common-web')
+    // C recu.guide.created 발행 (design.md 6장). 토픽·메시지 형식·발행 설정은 공통 모듈을 쓴다
+    implementation project(':common:common-kafka')
 
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
+    // 내부 API ④⑤ 호출 (design.md 5장). 타임아웃·실패 처리는 common-web이 켠다
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
     // API 문서 (원본과 같은 버전: Boot 3.4 짝)
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
 

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 /** 모델 답을 표 칸 값으로 옮기는 규칙. 실제 호출은 하지 않는다. */
 class PostClassifierTest {
 
-  private final PostClassifier classifier = new PostClassifier(null, "k", "m", 10, 0, millis -> {});
+  private final PostClassifier classifier = new PostClassifier(null, "m", 10, 0, millis -> {});
 
   @Test
   void 허용값_안의_답은_그대로_옮긴다() throws Exception {
@@ -50,6 +50,25 @@ class PostClassifierTest {
   }
 
   @Test
+  void 요지는_앞뒤_공백을_지우고_150자까지_받는다() throws Exception {
+    String summary = "가".repeat(150);
+
+    ImportedPost.Ai ai = classifier.parse(answerWithSummary("  " + summary + "  ")).orElseThrow();
+
+    assertThat(ai.summary()).isEqualTo(summary);
+  }
+
+  @Test
+  void 요지가_150자를_넘으면_요지만_비운다() throws Exception {
+    ImportedPost.Ai ai = classifier.parse(answerWithSummary("가".repeat(151))).orElseThrow();
+
+    assertThat(ai.summary()).isNull();
+    assertThat(ai.field()).isEqualTo("Backend");
+    assertThat(ai.level()).isEqualTo("중급");
+    assertThat(ai.core_techs()).containsExactly("Kafka");
+  }
+
+  @Test
   void 본문은_설정한_글자_수까지만_넣는다() {
     CollectedPost post =
         new CollectedPost(
@@ -68,5 +87,13 @@ class PostClassifierTest {
     String prompt = classifier.prompt(post);
 
     assertThat(prompt).contains("0123456789").doesNotContain("ABCDEF").contains("제목: 제목");
+  }
+
+  private static String answerWithSummary(String summary) {
+    return """
+        {"is_tech": true, "field": "Backend", "level": "중급",
+         "core_techs": ["Kafka"], "summary": "%s"}
+        """
+        .formatted(summary);
   }
 }

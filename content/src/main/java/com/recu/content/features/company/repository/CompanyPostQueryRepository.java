@@ -38,10 +38,6 @@ public interface CompanyPostQueryRepository extends Repository<BlogPostEntity, L
       """)
   List<SectionCount> findSectionCounts(@Param("postIds") List<Long> postIds);
 
-  // TODO(①, ②, C): 원본에 있던 findJobFields·findWantSkillNames(user 표), findBookmarkedPostIds(bookmark
-  // 표),
-  //  findGuidedPostIds(ai_guide 표)는 다른 서비스 표라 지웠다. CompanyService의 대역 메서드 참고.
-
   interface SectionCount {
     Long getPostId();
 

@@ -12,6 +12,10 @@ spring:
           default-label: main
           # 뜰 때 저장소를 받아 본다. 주소·토큰이 틀리면 첫 요청이 아니라 기동 때 실패한다
           clone-on-start: true
+  # Spring Cloud Bus 통로. 서비스는 설정 저장소의 Kafka 주소를 받지만, Config Server 자신은 설정 저장소를 읽지 않아서 여기 둔다
+  # compose(dev)·EC2(prod)에서는 KAFKA_BOOTSTRAP_SERVERS=kafka:9092 처럼 실행 환경 변수로 바꾼다
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
 # 설정 저장소의 '{cipher}…' 값을 풀어서 내려준다. 같은 키로 /encrypt를 불러 값을 암호화한다
 encrypt:
@@ -24,4 +28,6 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        # busrefresh: 설정 저장소를 고친 뒤 POST 한 번으로 모든 서비스에 반영 (design.md 9장)
+        # 8888 포트는 외부에 열지 않고 Gateway 라우트에도 없어서 내부에서만 부른다
+        include: health,busrefresh
