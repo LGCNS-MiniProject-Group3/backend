@@ -106,8 +106,8 @@ public class CollectJobService {
       log.info("웹 수집 대상 {} (기업 {}곳)", jobId, targets.size());
 
       List<WebCollectService.CompanyResult> results = webCollectService.run(targets);
-      int saved =
-          results.stream().filter(r -> r.saved() != null).mapToInt(r -> r.saved().newPosts()).sum();
+
+      int saved = results.stream().mapToInt(WebCollectService.CompanyResult::publishedCount).sum();
 
       // 성공: DONE + 발행(저장)한 글 수 + 종료 시각
       entity.markDone(saved, LocalDateTime.now(KST).withNano(0));
