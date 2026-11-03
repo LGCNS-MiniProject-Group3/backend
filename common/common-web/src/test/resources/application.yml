@@ -1,0 +1,10 @@
+# common-web 테스트용. Bus 의존성이 함께 들어오지만 Kafka 없이 돌도록 끈다
+spring:
+  cloud:
+    bus:
+      enabled: false
+
+# 테스트에서는 추적을 끈다. 켜 두면 Zipkin(9411)으로 보내다 실패한 로그가 쌓인다
+management:
+  tracing:
+    enabled: false

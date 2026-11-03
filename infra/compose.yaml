@@ -1,0 +1,243 @@
+# 5번 담당 — 로컬 local/dev 인프라 (전체스택)
+# 서비스 이름 discovery / mariadb / kafka 는 config application-dev.yml 과 같아야 함
+
+
+name: recu
+
+x-app-env: &app-env
+  SPRING_PROFILES_ACTIVE: dev
+  CONFIG_URL: http://config:8888
+  JAVA_TOOL_OPTIONS: "-Dfile.encoding=UTF-8 -Duser.timezone=Asia/Seoul -Xmx256m"
+
+x-app-health: &app-health
+  interval: 10s
+  timeout: 5s
+  retries: 30
+  start_period: 60s
+
+services:
+  discovery:
+    build: { context: .., args: { MODULE: discovery } }
+    image: recu-discovery
+    container_name: recu-discovery
+    ports: [ "127.0.0.1:8761:8761" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8761/actuator/health || exit 1" ]
+      <<: *app-health
+
+  config:
+    build: { context: .., args: { MODULE: config } }
+    image: recu-config
+    container_name: recu-config
+    ports: [ "127.0.0.1:8888:8888" ]
+    environment:
+      CONFIG_REPO_URI: ${CONFIG_REPO_URI:?Set CONFIG_REPO_URI in .env}
+      CONFIG_REPO_TOKEN: ${CONFIG_REPO_TOKEN:?Set CONFIG_REPO_TOKEN in .env}
+      ENCRYPT_KEY: ${ENCRYPT_KEY:?Set ENCRYPT_KEY in .env}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8888/actuator/health || exit 1" ]
+      <<: *app-health
+
+  user:
+    build: { context: .., args: { MODULE: user } }
+    image: recu-user
+    container_name: recu-user
+    ports: [ "127.0.0.1:8081:8081" ]
+    environment:
+      <<: *app-env
+    depends_on:
+      config: { condition: service_healthy }
+      discovery: { condition: service_healthy }
+      mariadb: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8081/actuator/health || exit 1" ]
+      <<: *app-health
+
+  content:
+    build: { context: .., args: { MODULE: content } }
+    image: recu-content
+    container_name: recu-content
+    ports: [ "127.0.0.1:8082:8082" ]
+    environment:
+      <<: *app-env
+    depends_on:
+      config: { condition: service_healthy }
+      discovery: { condition: service_healthy }
+      mariadb: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8082/actuator/health || exit 1" ]
+      <<: *app-health
+
+  collector:
+    build: { context: .., args: { MODULE: collector } }
+    image: recu-collector
+    container_name: recu-collector
+    ports: [ "127.0.0.1:8083:8083" ]
+    environment:
+      <<: *app-env
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      COLLECT_DATA_DIR: ${COLLECT_DATA_DIR:-}
+    depends_on:
+      config: { condition: service_healthy }
+      discovery: { condition: service_healthy }
+      mariadb: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8083/actuator/health || exit 1" ]
+      <<: *app-health
+
+  guide:
+    build: { context: .., args: { MODULE: guide } }
+    image: recu-guide
+    container_name: recu-guide
+    ports: [ "127.0.0.1:8084:8084" ]
+    environment:
+      <<: *app-env
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      config: { condition: service_healthy }
+      discovery: { condition: service_healthy }
+      mariadb: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8084/actuator/health || exit 1" ]
+      <<: *app-health
+
+  bookmark:
+    build: { context: .., args: { MODULE: bookmark } }
+    image: recu-bookmark
+    container_name: recu-bookmark
+    ports: [ "127.0.0.1:8085:8085" ]
+    environment:
+      <<: *app-env
+    depends_on:
+      config: { condition: service_healthy }
+      discovery: { condition: service_healthy }
+      mariadb: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8085/actuator/health || exit 1" ]
+      <<: *app-health
+
+  gateway:
+    build: { context: .., args: { MODULE: gateway } }
+    image: recu-gateway
+    container_name: recu-gateway
+    ports: [ "127.0.0.1:8000:8000" ]
+    environment:
+      <<: *app-env
+    depends_on:
+      config: { condition: service_healthy }
+      discovery: { condition: service_healthy }
+      user: { condition: service_healthy }
+      content: { condition: service_healthy }
+      collector: { condition: service_healthy }
+      guide: { condition: service_healthy }
+      bookmark: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8000/actuator/health || exit 1" ]
+      <<: *app-health
+
+
+  mariadb:
+    image: mariadb:11.4
+    container_name: recu-mariadb
+    ports:
+      - "127.0.0.1:3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Set MARIADB_ROOT_PASSWORD in .env}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      # compose 파일 기준 상대경로 → infra/db
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  kafka:
+    image: apache/kafka:3.8.1
+    container_name: recu-kafka
+    ports:
+      # 호스트 9092 → 컨테이너 EXTERNAL(9094). IDE(local)는 계속 localhost:9092
+      - "127.0.0.1:9092:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
+      KAFKA_MESSAGE_MAX_BYTES: 4194304
+      # INTERNAL: compose 안 서비스(dev) → kafka:9092 (설정 저장소 application.yml과 같은 포트)
+      # EXTERNAL: 호스트 IDE(local) → localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list || exit 1" ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    container_name: recu-prometheus
+    ports: [ "127.0.0.1:9090:9090" ]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=3d
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      discovery: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O /dev/null http://localhost:9090/-/ready || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  grafana:
+    image: grafana/grafana:12.3.1
+    container_name: recu-grafana
+    ports: [ "127.0.0.1:3000:3000" ]
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      prometheus: { condition: service_healthy }
+      zipkin: { condition: service_started }
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/api/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  zipkin:
+    image: openzipkin/zipkin:3.5.1
+    container_name: recu-zipkin
+    ports: [ "127.0.0.1:9411:9411" ]
+    environment:
+      STORAGE_TYPE: mem
+
+volumes:
+  mariadb_data:
+  prometheus_data:
+  grafana_data:

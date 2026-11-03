@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: bookmark
+  config:
+    # 나머지 설정(DB, Eureka 주소)은 Config Server가 설정 저장소에서 내려준다.
+    # optional은 테스트에서 Config를 끌 수 있게 하려는 것. 실행 중에는 fail-fast라 Config가 꺼져 있으면 뜨지 않는다
+    import: optional:configserver:${CONFIG_URL:http://localhost:8888}
+  cloud:
+    config:
+      fail-fast: true
+
+server:
+  port: 8085

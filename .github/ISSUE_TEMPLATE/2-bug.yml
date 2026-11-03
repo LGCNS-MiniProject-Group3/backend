@@ -1,0 +1,58 @@
+name: 버그 신고
+description: 동작이 잘못됐을 때
+title: "[서비스] "
+labels: ["type:fix"]
+body:
+  - type: dropdown
+    id: service
+    attributes:
+      label: 어디서 났나요
+      multiple: true
+      options:
+        - gateway
+        - discovery
+        - config
+        - common
+        - kafka
+        - user
+        - content
+        - collector
+        - guide
+        - bookmark
+        - infra
+        - ci
+        - 모르겠음
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 방법
+      placeholder: |
+        1. docker compose up
+        2. POST /api/bookmarks/12
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대한 결과
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 결과
+      description: 오류 응답, 로그를 붙여 주세요.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: env
+    attributes:
+      label: 환경
+      options:
+        - 로컬 docker-compose
+        - EC2 배포 환경
+        - CI

@@ -1,0 +1,21 @@
+# 테스트에서는 Config Server에 접속하지 않는다.
+# application-test.yml(프로필 파일)에 두면 Config 접속을 정하는 시점보다 늦게 읽혀서,
+# 프로필과 상관없이 항상 읽히는 이 위치(classpath:/config/)에 둔다
+spring:
+  cloud:
+    config:
+      enabled: false
+    # Spring Cloud Bus도 끈다. 켜 두면 없는 Kafka에 계속 접속을 시도해서 테스트가 몇 분씩 느려진다
+    bus:
+      enabled: false
+  # Kafka 없이 돈다. 시작할 때 토픽을 만들지 않고, 수신도 하지 않는다 (수신 테스트만 따로 켠다)
+  kafka:
+    admin:
+      auto-create: false
+    listener:
+      auto-startup: false
+
+# 테스트에서는 추적을 끈다. 켜 두면 Zipkin(9411)으로 보내다 실패한 로그가 쌓인다
+management:
+  tracing:
+    enabled: false

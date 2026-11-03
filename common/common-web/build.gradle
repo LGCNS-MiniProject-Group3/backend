@@ -1,0 +1,26 @@
+plugins {
+    id 'java-library'
+}
+
+// 서비스가 이미 가진 라이브러리는 compileOnly로 둔다. 버전·포함 여부는 서비스 쪽이 정한다.
+dependencies {
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+    // Feign을 쓰는 서비스에서만 Feign 오류 처리·타임아웃이 켜진다
+    compileOnly 'io.github.openfeign:feign-core'
+
+    // Spring Cloud Bus: Config Server의 /actuator/busrefresh 신호를 Kafka로 받아 설정을 다시 읽는다 (design.md 9장)
+    // 서비스가 갖고 있지 않은 라이브러리라 api로 넘겨준다. 테스트에서는 각 서비스가 끈다
+    api 'org.springframework.cloud:spring-cloud-starter-bus-kafka'
+    // 지표와 분산 추적 (V2 모니터링·Zipkin). 서비스 5개가 이 모듈 하나로 받게 api로 넘긴다. 버전은 Spring Boot BOM
+    // prometheus: /actuator/prometheus 로 지표를 내보낸다
+    // tracing-bridge-brave + zipkin-reporter-brave: 요청마다 traceId를 만들고 Zipkin으로 보낸다
+    // feign-micrometer: Feign 호출에 traceId를 이어 붙이고 호출 지표를 남긴다
+    api 'io.micrometer:micrometer-registry-prometheus'
+    api 'io.micrometer:micrometer-tracing-bridge-brave'
+    api 'io.zipkin.reporter2:zipkin-reporter-brave'
+    api 'io.github.openfeign:feign-micrometer'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation 'org.springframework.boot:spring-boot-starter-validation'
+    testImplementation 'io.github.openfeign:feign-core'
+}

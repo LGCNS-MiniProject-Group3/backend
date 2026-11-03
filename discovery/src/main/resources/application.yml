@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: discovery
+
+server:
+  port: 8761
+
+eureka:
+  client:
+    # 서버 자신은 등록하지 않고, 다른 서버에서 목록을 받아 오지도 않는다 (Eureka 1대)
+    register-with-eureka: false
+    fetch-registry: false
+  server:
+    # 개발 중에는 서비스를 자주 껐다 켠다. 꺼진 서비스가 목록에 오래 남지 않게 자기 보호 모드를 끈다
+    enable-self-preservation: false
+
+# Prometheus가 지표를 가져간다 (V2 모니터링). discovery는 설정 저장소를 읽지 않아서 여기 둔다
+# 8761 포트는 외부(prod 보안 그룹)에 열지 않고 Gateway 라우트에도 없다
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      # 다른 서비스와 같은 라벨. 설정 저장소를 읽지 않아서 여기 둔다 (설정 저장소 application.yml과 같은 값)
+      application: ${spring.application.name}

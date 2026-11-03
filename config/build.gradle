@@ -1,0 +1,13 @@
+plugins {
+    id 'org.springframework.boot'
+}
+
+dependencies {
+    // 웹 서버가 함께 들어온다. 설정 저장소(git)를 읽어 서비스에 설정을 내려준다
+    implementation 'org.springframework.cloud:spring-cloud-config-server'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // 지표를 /actuator/prometheus 로 내보낸다 (V2 모니터링). 요청을 다른 서비스로 넘기지 않아 추적은 넣지 않는다
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    // /actuator/busrefresh 를 받으면 Kafka(springCloudBus 토픽)로 모든 서비스에 갱신 신호를 보낸다
+    implementation 'org.springframework.cloud:spring-cloud-starter-bus-kafka'
+}

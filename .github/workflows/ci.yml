@@ -1,0 +1,124 @@
+# PR마다 바뀐 모듈만 골라 ./gradlew :<모듈>:check(테스트 + Spotless)를 돌린다.
+# 브랜치 보호의 required check에는 마지막 job(ci-result) 하나만 건다.
+# 설계: docs/design.md 10장
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+# 같은 PR에 새 커밋이 올라오면 이전 실행을 취소한다
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read # paths-filter가 PR의 바뀐 파일 목록을 읽는다
+
+jobs:
+  changes:
+    name: 바뀐 모듈 찾기
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.modules.outputs.modules }}
+    steps:
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3. 외부 액션이라 커밋 SHA로 고정
+        id: filter
+        with:
+          # all: 모든 모듈이 같이 쓰는 파일. 바뀌면 전체 모듈을 검사한다
+          filters: |
+            all:
+              - 'common/**'
+              - 'build.gradle'
+              - 'settings.gradle'
+              - 'gradle/**'
+              - 'gradlew'
+              - 'gradlew.bat'
+              - '.github/workflows/ci.yml'
+            gateway:
+              - 'gateway/**'
+            discovery:
+              - 'discovery/**'
+            config:
+              - 'config/**'
+            user:
+              - 'user/**'
+            content:
+              - 'content/**'
+            collector:
+              - 'collector/**'
+            guide:
+              - 'guide/**'
+            bookmark:
+              - 'bookmark/**'
+
+      # 필터 결과 → Gradle 모듈 경로 목록(JSON). 문서만 바뀌면 빈 목록
+      - id: modules
+        env:
+          ALL_CHANGED: ${{ steps.filter.outputs.all }}
+          CHANGED: ${{ steps.filter.outputs.changes }}
+        run: |
+          if [ "$ALL_CHANGED" = "true" ]; then
+            modules='["gateway","discovery","config","user","content","collector","guide","bookmark","common:common-web","common:common-kafka"]'
+          else
+            modules=$(echo "$CHANGED" | jq -c 'map(select(. != "all"))')
+          fi
+          echo "검사할 모듈: $modules"
+          echo "modules=$modules" >> "$GITHUB_OUTPUT"
+
+  check:
+    name: check (${{ matrix.module }})
+    needs: changes
+    if: needs.changes.outputs.modules != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # 한 모듈이 실패해도 나머지 결과를 다 본다
+      matrix:
+        module: ${{ fromJSON(needs.changes.outputs.modules) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Gradle 캐시와 wrapper 검증
+      - uses: gradle/actions/setup-gradle@v5 # v6은 캐시 부분 이용 약관이 바뀌어 v5(Node 24)에 둔다
+
+      - run: ./gradlew :${{ matrix.module }}:check
+
+      # 실패하면 테스트 리포트를 받아 볼 수 있게 올린다 (common:common-web → common/common-web)
+      - id: report
+        if: failure()
+        env:
+          MODULE: ${{ matrix.module }}
+        run: |
+          echo "dir=${MODULE//://}" >> "$GITHUB_OUTPUT"
+          echo "name=${MODULE//:/-}" >> "$GITHUB_OUTPUT"
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-report-${{ steps.report.outputs.name }}
+          path: ${{ steps.report.outputs.dir }}/build/reports/tests/test/
+          retention-days: 7
+
+  # required check 대상. check가 건너뛰어져도(문서만 바뀐 PR) 항상 결과를 남긴다
+  ci-result:
+    name: ci-result
+    needs: [changes, check]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CHECK_RESULT: ${{ needs.check.result }}
+        run: |
+          echo "changes: $CHANGES_RESULT, check: $CHECK_RESULT"
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            exit 1
+          fi
+          if [ "$CHECK_RESULT" != "success" ] && [ "$CHECK_RESULT" != "skipped" ]; then
+            exit 1
+          fi
