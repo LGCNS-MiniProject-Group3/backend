@@ -4,7 +4,6 @@ import com.recu.user.features.user.domain.dto.UserLoginRequestDTO;
 import com.recu.user.features.user.domain.dto.UserResponseDTO;
 import com.recu.user.features.user.domain.dto.UserSignupRequestDTO;
 import com.recu.user.features.user.service.UserService;
-import com.recu.user.features.user.vo.Greeting;
 import io.micrometer.core.annotation.Timed;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -27,12 +26,11 @@ public class UserController {
 
   private final UserService userService;
   private Environment env; // 이거는 new-toy-msa
-  private Greeting greeting;
 
   @Autowired
-  public UserController(Environment env, Greeting greeting, UserService userService) {
+  public UserController(Environment env, UserService userService) {
     this.env = env;
-    this.greeting = greeting;
+
     this.userService = userService;
   }
 
@@ -64,7 +62,7 @@ public class UserController {
         request.getRequestURL());
 
     //        return env.getProperty("greeting.message");
-    return greeting.getMessage();
+    return null;
   }
 
   // 회원가입
