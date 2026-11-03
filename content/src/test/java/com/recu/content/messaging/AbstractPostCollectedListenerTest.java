@@ -16,6 +16,7 @@ import com.recu.content.database.repository.TechTagRepository;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -184,6 +185,42 @@ abstract class AbstractPostCollectedListenerTest {
     assertThat(posts.findByUrl(url)).isEmpty();
   }
 
+  @Test
+  void 긴_분류어와_요약이_있는_A도_원본_규칙으로_보정해_관련_데이터와_함께_저장한다() throws Exception {
+    String prefix = "분".repeat(100);
+    var message =
+        message(
+            companyId,
+            defaultSections(),
+            " \t" + "요".repeat(500) + " \n",
+            Arrays.asList(
+                null, "", " \t ", " Backend ", "Backend", " " + prefix + "첫번째 ", prefix + "두번째"));
+    consumed(send(message));
+
+    var post = posts.findByUrl(url).orElseThrow();
+    assertThat(post.getSummary()).isEqualTo("요".repeat(300));
+    assertThat(post.getContent_html()).isEqualTo(message.payload().contentHtml());
+    assertThat(post.getContent_text()).isEqualTo(message.payload().contentText());
+    assertThat(
+            jdbc.queryForList(
+                "select name from blog_post_category where blog_post_id = ?",
+                String.class,
+                post.getBlog_post_id()))
+        .containsExactlyInAnyOrder("Backend", prefix);
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from blog_post_section where blog_post_id = ?",
+                Long.class,
+                post.getBlog_post_id()))
+        .isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from blog_post_tag where blog_post_id = ?",
+                Long.class,
+                post.getBlog_post_id()))
+        .isEqualTo(2);
+  }
+
   private List<Long> counts() {
     return Stream.of(
             "company",
@@ -197,6 +234,11 @@ abstract class AbstractPostCollectedListenerTest {
   }
 
   private EventEnvelope<PostCollectedEvent> message(Long company, List<Section> sections) {
+    return message(company, sections, "요약", List.of("Backend", "Backend"));
+  }
+
+  private EventEnvelope<PostCollectedEvent> message(
+      Long company, List<Section> sections, String summary, List<String> categories) {
     return EventEnvelope.of(
         KafkaTopics.EVENT_TYPE_POST_COLLECTED,
         new PostCollectedEvent(
@@ -211,8 +253,8 @@ abstract class AbstractPostCollectedListenerTest {
             true,
             "Backend",
             "중급",
-            "요약",
-            List.of("Backend", "Backend"),
+            summary,
+            categories,
             List.of(new Tag(knownTech, 3), new Tag(newTech, 1)),
             sections));
   }

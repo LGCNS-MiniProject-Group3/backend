@@ -19,10 +19,16 @@ import com.recu.content.features.post.repository.PostRepository;
 import com.recu.content.features.post.repository.PostSectionRepository;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -193,6 +199,96 @@ class PostCollectedIngestServiceTest {
 
     assertThat(service.ingest(empty)).isTrue();
     assertThat(counts()).containsExactly(1L, 1L, 0L, 0L, 0L, 0L);
+  }
+
+  @ParameterizedTest
+  @NullAndEmptySource
+  void 분류어_목록이_null이거나_비어도_글과_관련_데이터를_저장한다(List<String> values) {
+    var event = withCategoriesAndSummary(values, "요약");
+
+    assertThat(service.ingest(event)).isTrue();
+
+    assertThat(posts.findByUrl(event.url())).isPresent();
+    assertThat(categories.count()).isZero();
+    assertThat(sections.count()).isEqualTo(2);
+    assertThat(postTags.count()).isEqualTo(2);
+  }
+
+  @Test
+  void 분류어의_빈_항목을_제외하고_공백_정리_후_중복을_제거한다() {
+    service.ingest(
+        withCategoriesAndSummary(
+            Arrays.asList(null, "", " \t\n ", " Backend ", "Backend", "Engineering"), "요약"));
+
+    assertThat(jdbc.queryForList("select name from blog_post_category", String.class))
+        .containsExactlyInAnyOrder("Backend", "Engineering");
+  }
+
+  @ParameterizedTest
+  @CsvSource({"99,99", "100,100", "101,100", "256,100"})
+  void 분류어는_공백_정리_후_원본의_100자_제한으로_저장한다(int length, int expectedLength) {
+    service.ingest(withCategoriesAndSummary(List.of(" \t" + "분".repeat(length) + " \n"), "요약"));
+
+    assertThat(jdbc.queryForList("select name from blog_post_category", String.class))
+        .containsExactly("분".repeat(expectedLength));
+  }
+
+  @Test
+  void 서로_다른_분류어도_100자_절단_후_같아지면_한_건만_저장한다() {
+    String prefix = "분".repeat(100);
+    service.ingest(withCategoriesAndSummary(List.of(" " + prefix + "첫번째 ", prefix + "두번째"), "요약"));
+
+    assertThat(jdbc.queryForList("select name from blog_post_category", String.class))
+        .containsExactly(prefix);
+  }
+
+  @ParameterizedTest
+  @NullSource
+  @ValueSource(strings = {"", " \t\n "})
+  void 요약의_null은_유지하고_빈_값은_원본처럼_빈_문자열로_저장한다(String summary) {
+    var event = withCategoriesAndSummary(List.of(), summary);
+    service.ingest(event);
+
+    assertThat(posts.findByUrl(event.url()).orElseThrow().getSummary())
+        .isEqualTo(summary == null ? null : "");
+  }
+
+  @Test
+  void 짧은_요약도_앞뒤_공백을_제거해_저장한다() {
+    var event = withCategoriesAndSummary(List.of(), " \t요약 문장입니다. \n");
+    service.ingest(event);
+
+    assertThat(posts.findByUrl(event.url()).orElseThrow().getSummary()).isEqualTo("요약 문장입니다.");
+  }
+
+  @ParameterizedTest
+  @CsvSource({"299,299", "300,300", "301,300", "600,300"})
+  void 요약은_공백_정리_후_원본의_300자_제한으로_저장한다(int length, int expectedLength) {
+    var event = withCategoriesAndSummary(List.of(), " \t" + "요".repeat(length) + " \n");
+    service.ingest(event);
+
+    assertThat(posts.findByUrl(event.url()).orElseThrow().getSummary())
+        .isEqualTo("요".repeat(expectedLength));
+  }
+
+  private PostCollectedEvent withCategoriesAndSummary(List<String> values, String summary) {
+    var e = event(companyId, "https://example.com/normalization", defaultSections());
+    return new PostCollectedEvent(
+        e.companyId(),
+        e.url(),
+        e.externalId(),
+        e.title(),
+        e.publishedAt(),
+        e.contentHtml(),
+        e.contentText(),
+        e.hasCode(),
+        e.isTech(),
+        e.field(),
+        e.level(),
+        summary,
+        values,
+        e.tags(),
+        e.sections());
   }
 
   private List<Long> counts() {

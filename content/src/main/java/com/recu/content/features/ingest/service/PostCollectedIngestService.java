@@ -18,7 +18,10 @@ import com.recu.content.database.repository.CompanyRepository;
 import com.recu.content.database.repository.TechTagRepository;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PostCollectedIngestService {
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+  private static final int CATEGORY_NAME_MAX_LENGTH = 100;
+  private static final int SUMMARY_MAX_LENGTH = 300;
 
   private final CompanyRepository companies;
   private final BlogPostRepository posts;
@@ -62,16 +67,10 @@ public class PostCollectedIngestService {
                 .is_tech(event.isTech())
                 .field(event.field())
                 .level(event.level())
-                .summary(event.summary())
+                .summary(cut(event.summary(), SUMMARY_MAX_LENGTH))
                 .build());
 
-    for (String name : new LinkedHashSet<>(event.categories())) {
-      categories.save(
-          BlogPostCategoryEntity.builder()
-              .id(new BlogPostCategoryPk(post.getBlog_post_id(), name))
-              .blogPost(post)
-              .build());
-    }
+    saveCategories(event.categories(), post);
     for (var tag : event.tags()) {
       // 별칭 추측 없이 이름으로 재사용한다. 새 기술의 나머지 값은 엔티티·스키마 기본값이다.
       var tech =
@@ -98,5 +97,37 @@ public class PostCollectedIngestService {
               .build());
     }
     return true;
+  }
+
+  /** 원본 적재 규칙대로 가공한 분류어를 기준으로 중복을 제거한다. */
+  private void saveCategories(List<String> sourceCategories, BlogPostEntity post) {
+    if (sourceCategories == null) {
+      return;
+    }
+    Set<String> seen = new LinkedHashSet<>();
+    List<BlogPostCategoryEntity> list = new ArrayList<>();
+    for (String name : sourceCategories) {
+      if (name == null || name.isBlank()) {
+        continue;
+      }
+      String value = cut(name, CATEGORY_NAME_MAX_LENGTH);
+      if (!seen.add(value)) {
+        continue;
+      }
+      list.add(
+          BlogPostCategoryEntity.builder()
+              .id(new BlogPostCategoryPk(post.getBlog_post_id(), value))
+              .blogPost(post)
+              .build());
+    }
+    categories.saveAll(list);
+  }
+
+  private String cut(String value, int max) {
+    if (value == null) {
+      return null;
+    }
+    String trimmed = value.trim();
+    return trimmed.length() <= max ? trimmed : trimmed.substring(0, max);
   }
 }
