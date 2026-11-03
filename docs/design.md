@@ -45,15 +45,15 @@
 - **프론트 API 경로는 바꾸지 않아요.** 프론트는 `VITE_API_BASE_URL` 하나만 Gateway 주소로 바꿔요.
 - **다른 서비스의 테이블은 읽지 않아요.** 필요하면 Feign으로 묻거나, Kafka 메시지를 받아 자기 DB에 사본을 둬요.
 - **다른 서비스의 행은 id 값으로만 참조해요.** 서비스 경계를 넘는 외래 키는 두지 않아요.
-- **V1을 먼저 끝내요.** 서비스 분리·Feign·Kafka 발행/수신·CI/CD가 돌아간 뒤에 V2(Kafka 동기화 처리)를 붙여요.
+- **V1을 먼저 끝내요.** 서비스 분리·Feign·Kafka 발행/수신·CI/CD가 돌아간 뒤에 V2(모니터링·분산 추적·부하 테스트)를 붙여요.
 
 ### 범위
 
 | 단계 | 하는 것 |
 | --- | --- |
 | **V1** | 서비스 5개 분리, OpenFeign 동기 통신, Kafka 비동기 통신(발행·수신), GitHub Actions CI/CD (ECR + EC2 + RDS, 필수 10번), Config 설정 암호화, Spring Cloud Bus |
-| **V2** | Kafka 이벤트 동기화 처리: 재시도, DLT, 중복 무시(멱등성), 순서 뒤바뀜 처리 |
-| 안 함 | Saga, outbox |
+| **V2** | 관측과 성능: 모니터링(Prometheus + Grafana), 분산 추적(Zipkin), 부하 테스트(k6). 2026-11-03 팀 회의에서 변경 (13장) |
+| 안 함 | Saga, outbox, Kafka 이벤트 동기화 처리(재시도·DLT·순서 처리, 6장에 설계만 남김) |
 
 ## 2. 서비스 구성
 
@@ -214,7 +214,7 @@ Eureka와 Config Server는 모든 서비스가 연결되므로 그림에서 뺐�
 ```jsonc
 // 공통 봉투
 {
-  "eventId": "6f1c2a1e-…",          // UUID. V2에서 중복 확인에 씀
+  "eventId": "6f1c2a1e-…",          // UUID. 동기화 처리를 하게 되면 중복 확인에 씀
   "eventType": "GUIDE_CREATED",
   "occurredAt": "2026-11-03T14:04:00+09:00",
   "payload": { … }
@@ -225,7 +225,7 @@ Eureka와 Config Server는 모든 서비스가 연결되므로 그림에서 뺐�
   "title": "…", "publishedAt": "2026-03-18T00:00:00+09:00",
   "contentHtml": "…", "contentText": "…", "hasCode": true,
   "isTech": true, "field": "Backend", "level": "중급", "summary": "…",
-  "categories": ["Backend"],
+  "categories": ["Engineering"],
   "tags": [{ "name": "Kafka", "rank": 1 }, { "name": "Redis", "rank": 2 }],
   "sections": [{ "seq": 1, "heading": "…", "level": "h2", "contentText": "…" }] }
 
@@ -238,14 +238,17 @@ Eureka와 Config Server는 모든 서비스가 연결되므로 그림에서 뺐�
 
 - `eventType`은 토픽마다 하나예요. A `POST_COLLECTED`, B `PROFILE_UPDATED`, C `GUIDE_CREATED`. 토픽 이름의 뒤 두 단어를 UPPER_SNAKE_CASE로 옮겨요.
 - B·C의 payload는 위 V1 기본값으로 확정했어요.
-- `eventId`는 V1에서 담기만 하고, V2에서 중복 확인에 써요.
-- V2에서 순서 뒤바뀜을 처리할 때 B·C에 `profileVersion`을 더해요(아래 V2 표).
+- `categories`는 사이트가 붙인 분류어(원본 `source_categories`)예요. AI가 정한 직무는 `field`에 따로 담아요 (#76).
+- `eventId`는 담기만 해요. 아래 동기화 처리를 하게 되면 중복 확인에 써요.
+- 순서 뒤바뀜을 처리하게 되면 B·C에 `profileVersion`을 더해요(아래 표).
 
 > **메시지 크기.** A에는 본문 HTML과 텍스트가 함께 들어가요. 기술 글 평균은 9,569자지만 가장 긴 글은 56,200자라, HTML까지 합치면 1MB 기본 한도에 가까워질 수 있어요. 브로커·프로듀서의 `max.message.bytes` / `max.request.size`를 2~4MB로 올리거나, 압축(`compression.type=lz4`)을 켜요.
 
-### V2: 동기화 처리
+### 동기화 처리 (이번 범위에서 하지 않음)
 
-V1이 끝난 뒤에 붙여요. 수신 쪽 오류 처리는 `common`의 Kafka 설정 한 곳에 넣어서, 서비스 코드는 거의 고치지 않게 해요.
+> 2026-11-03 팀 회의에서 V2를 모니터링·분산 추적·부하 테스트로 바꿔(12·13장) 이 절은 **구현하지 않아요.** 다음 단계로 할 때를 위해 설계만 남겨요. 지금은 V1 수신 공통 설정(`DefaultErrorHandler` 기본값)이 짧게 재시도한 뒤 실패한 메시지를 건너뛰어요.
+
+수신 쪽 오류 처리는 `common`의 Kafka 설정 한 곳에 넣어서, 서비스 코드는 거의 고치지 않게 해요.
 
 | 항목 | 내용 |
 | --- | --- |
@@ -391,7 +394,7 @@ user_guide_flag (
   blog_post_id     BIGINT NOT NULL,   -- content 서비스의 글 번호
   PRIMARY KEY (user_id, blog_post_id)
 )
--- V2: 순서 뒤바뀜 처리를 위해 profile_version INT NOT NULL 칸을 더한다
+-- (하지 않음, 6장 동기화 처리) 순서 뒤바뀜 처리를 하게 되면 profile_version INT NOT NULL 칸을 더한다
 
 -- collector: 수집 작업 1번 = 1줄 (원본은 메모리에만 있었음)
 collect_job (
@@ -424,6 +427,7 @@ collect_job (
 | config | `8888` | |
 | user / content / collector / guide / bookmark | `8081` ~ `8085` | 순서대로 |
 | MariaDB / Kafka | `3306` / `9092` | MariaDB는 local·dev만 컨테이너(prod는 RDS). Kafka는 KRaft 모드 단일 브로커 |
+| Prometheus / Grafana / Zipkin | `9090` / `3000` / `9411` | V2 관측. local·dev compose에만 있음 (prod는 #98에서 결정) |
 
 ### 공통 모듈
 
@@ -510,7 +514,22 @@ collect_job (
 
 ### 기동 순서 (Compose `depends_on`)
 
-config → discovery → MariaDB(local·dev), Kafka → 각 서비스 → gateway. prod는 RDS가 항상 떠 있어요. 각 서비스는 Config Server의 healthcheck가 통과한 뒤 뜨도록 `condition: service_healthy`를 걸어요.
+Kafka → config(Bus 때문에 Kafka가 먼저), discovery·MariaDB(local·dev) → 각 서비스 → gateway(서비스 5개가 healthy인 뒤). prod는 RDS가 항상 떠 있어요. 모두 `condition: service_healthy`로 걸어요 (`infra/compose.yaml`, `infra/compose.prod.yaml`).
+
+### 관측 (V2: 모니터링 · 분산 추적)
+
+| 항목 | 값 |
+| --- | --- |
+| 라이브러리 | `micrometer-registry-prometheus`, `micrometer-tracing-bridge-brave`, `zipkin-reporter-brave`, `feign-micrometer`. 업무 서비스는 `common-web`이 `api`로 넘기고, gateway·discovery·config는 각자 가져요 (#94) |
+| 지표 경로 | 각 서비스 `/actuator/prometheus`. Gateway 라우트에 넣지 않아 외부에서는 못 불러요 |
+| 서비스 라벨 | 모든 지표에 `application=<서비스 이름>`. **앱이 붙이고 Prometheus는 다시 붙이지 않아요** (붙이면 `exported_application`으로 바뀜) |
+| 수집 | Prometheus가 업무 서비스·gateway는 Eureka(`eureka_sd_configs`)로 찾고, Eureka에 없는 discovery·config는 고정 주소로 5초마다 가져가요 (`infra/monitoring/prometheus.yml`) |
+| 추적 | 모든 요청을 추적(샘플링 1.0), `http://<recu.zipkin.host>:9411/api/v2/spans`로 전송. Feign 호출에 traceId가 이어져요. prod는 Zipkin을 올리기 전까지 샘플링 0 |
+| 로그 | `%5p [서비스,traceId,spanId]`. gateway는 WebFlux라 `spring.reactor.context-propagation: auto`가 있어야 찍혀요 (#95) |
+| 대시보드 | Grafana 데이터소스(Prometheus·Zipkin)와 대시보드 JSON을 파일로 자동 등록 (`infra/monitoring/grafana/`) |
+| 부하 테스트 | k6로 Gateway(8000)를 호출. Prometheus의 remote-write 수신을 켜 두어 k6 결과도 같은 Grafana에서 봐요 |
+
+설정 값(노출·태그·샘플링·Zipkin 주소·로그 패턴)은 설정 저장소 `application.yml`에 있고, 설정 저장소를 읽지 않는 discovery·config는 각자 `application.yml`에 둬요.
 
 ## 10. CI/CD 파이프라인
 
@@ -605,7 +624,7 @@ flowchart LR
 | 버전 | 범위 | 시작 조건 |
 | --- | --- | --- |
 | **V1** | 필수 1~10번 + 선택 요구사항(V1 표시) | 바로 시작 |
-| **V2** | Kafka 이벤트 동기화 (선택 10번) | V1 통합 테스트 체크리스트가 모두 통과한 뒤 |
+| **V2** | 모니터링(선택 10번), 분산 추적(선택 6번), 부하 테스트(선택 7번) (9장 관측) | V1 기능이 develop에 모두 들어간 뒤 (2026-11-03) |
 
 ### 필수 요구사항
 
@@ -624,27 +643,32 @@ flowchart LR
 
 ### 선택 요구사항
 
-확정한 것만 적어요. 나머지(3 Kubernetes, 5 Circuit Breaker, 6 분산 추적, 7 부하 테스트, 8 관리자 대시보드, 9 알림 연동)는 팀 회의를 거쳐 **요구사항 명세서**에서 정하고, 정해지면 이 표에 더해요.
+확정한 것만 적어요. 나머지(3 Kubernetes, 5 Circuit Breaker, 8 관리자 대시보드, 9 알림 연동)는 하지 않아요.
 
 | No | 요구사항 | 구현 기준 (안내 자료) | 우리 계획 | 단계 |
 | --- | --- | --- | --- | --- |
 | 1 | Spring Cloud Bus | `/actuator/busrefresh`로 설정 일괄 갱신 | Kafka를 통로로 Bus 연결 (9장) | V1 |
 | 2 | 설정 암호화 | Config Server `{cipher}`로 DB 비밀번호·토큰 시크릿 보호 | 설정 저장소의 비밀 값을 `{cipher}`로 저장 (9장) | V1 |
 | 4 | 클라우드 실배포 | AWS 등에 실제 배포, 결과보고서에 배포 구성 | CI/CD로 AWS(ECR·EC2·RDS)에 배포 (10장) | V1 |
-| 10 | 추가 핵심 기술 | 10번으로 채택하지 않은 핵심 기술 1개 | **Kafka 이벤트 동기화**: 재시도·DLT·중복 무시 (6장 V2). 버전 정책상 V1 이후 여유 시 | V2 |
+| 6 | 분산 추적 | Zipkin으로 서비스 호출 추적 | Micrometer Tracing(Brave) + Zipkin. Gateway·서비스·Feign 구간에 traceId 전파, 로그에 traceId (9장 관측) | V2 |
+| 7 | 부하 테스트 | JMeter/k6로 API 성능 측정 | k6 시나리오(조회·쓰기)와 기준치(p95·오류율), 같은 시간대 Grafana 지표로 병목 분석 | V2 |
+| 10 | 추가 핵심 기술 | 10번으로 채택하지 않은 핵심 기술 1개 | **모니터링**(핵심 기술 기준: Prometheus + Grafana로 부하·장애 시 지표 분석). 부하(k6)·장애(서비스·Kafka 중지) 중 지표 변화를 분석 | V2 |
 
-> **CI/CD를 필수 10번에 두는 이유.** Kafka 동기화는 V1이 끝난 뒤 여유 시 진행하는 V2라 못 할 수도 있어요. Kafka를 필수 10번에 두고 못 하면 0점 + CI/CD 3점이지만, CI/CD를 필수 10번에 두면 V1만 끝내도 7점을 확보해요. Kafka 동기화까지 끝내면 어느 쪽이든 10점이에요.
+> **CI/CD를 필수 10번에 두는 이유.** V2는 V1이 끝난 뒤 진행해서 못 할 수도 있어요. CI/CD를 필수 10번에 두면 V1만 끝내도 7점을 확보하고, V2 모니터링이 선택 10번을 채워요.
+>
+> **V2를 Kafka 동기화에서 모니터링으로 바꾼 이유 (2026-11-03).** 남은 일정(11/04 15:00 구현 마감)에 Kafka 동기화(재시도·DLT·순서 처리)는 6번 한 사람에게 몰리고 증빙 시나리오도 길었어요. 모니터링·분산 추적·부하 테스트는 1~6번 6명이 세 팀으로 나눠 동시에 할 수 있고, 선택 6·7·10 세 칸을 채워요. 중복 무시(멱등성)는 V1에서 이미 `url` UNIQUE와 `insertIfAbsent`로 갖춰져 있어요.
 ## 13. 결정 사항
 
 ### 정해진 것
 
 | 항목 | 결정 |
 | --- | --- |
-| 핵심 차별화 기술 | 필수 10번 CI/CD 파이프라인(V1), 선택 10번 Kafka 이벤트 동기화(V2) |
-| 버전 정책 | V1(필수 1~10번, 선택 1·2·4번) → V1 통합 테스트 통과 후 V2(Kafka 동기화) |
+| 핵심 차별화 기술 | 필수 10번 CI/CD 파이프라인(V1), 선택 10번 모니터링(V2) |
+| 버전 정책 | V1(필수 1~10번, 선택 1·2·4번) → V2(선택 6·7·10번: 분산 추적·부하 테스트·모니터링) |
+| V2 범위 변경 | 2026-11-03 팀 회의: Kafka 이벤트 동기화 → 모니터링·분산 추적·부하 테스트. 역할은 1~6번이 다시 골라 세 팀으로 나눔 ([roles.md](roles.md#v2-역할)) |
 | 배포 | GitHub Actions에서 빌드 → AWS ECR 푸시 → EC2에서 pull·실행 |
 | 배포 DB | AWS RDS for MariaDB 1대 + DB 5개 + 서비스별 계정 (8장) |
-| 선택 요구사항 (확정) | 1 Spring Cloud Bus, 2 설정 암호화, 4 클라우드 실배포. 나머지는 요구사항 명세서에서 결정 |
+| 선택 요구사항 (확정) | V1: 1 Spring Cloud Bus, 2 설정 암호화, 4 클라우드 실배포 / V2: 6 분산 추적, 7 부하 테스트, 10 모니터링 |
 | 로그인 | 이메일·비밀번호 가입·로그인, USER가 JWT를 발급하고 Gateway가 Access JWT를 검증 |
 | 토큰 | Refresh 토큰은 user DB에 저장, Redis 안 씀 (4장) |
 | 서비스 수 | 5개 (collector 분리) |

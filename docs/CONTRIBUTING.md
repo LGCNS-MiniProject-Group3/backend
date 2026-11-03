@@ -264,7 +264,7 @@ rebase 후 force push는 내 작업 브랜치에서만, 리뷰가 시작되기 �
 | 서비스 | `svc:gateway` `svc:discovery` `svc:config` `svc:common` `svc:user` `svc:content` `svc:collector` `svc:guide` `svc:bookmark` `svc:kafka` `svc:infra` `svc:ci` |
 | 타입 | `type:feat` `type:fix` `type:refactor` `type:chore` `type:docs` `type:test` |
 | 상태 | `spec-change` (스펙 변경), `blocked` (다른 작업을 기다림) |
-| 마일스톤 | `V1` (서비스 분리·Feign·Kafka 발행/수신·CI/CD), `V2` (Kafka 동기화 처리) |
+| 마일스톤 | `V1` (서비스 분리·Feign·Kafka 발행/수신·CI/CD), `V2` (모니터링·분산 추적·부하 테스트) |
 
 ## 저장소 설정 (1번·7번이 처음에 한 번)
 
