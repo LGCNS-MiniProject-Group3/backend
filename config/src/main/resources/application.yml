@@ -30,4 +30,5 @@ management:
       exposure:
         # busrefresh: 설정 저장소를 고친 뒤 POST 한 번으로 모든 서비스에 반영 (design.md 9장)
         # 8888 포트는 외부에 열지 않고 Gateway 라우트에도 없어서 내부에서만 부른다
-        include: health,busrefresh
+        # prometheus: Prometheus가 지표를 가져간다 (V2 모니터링)
+        include: health,busrefresh,prometheus
