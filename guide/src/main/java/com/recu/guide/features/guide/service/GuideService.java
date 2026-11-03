@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.recu.common.web.error.BusinessException;
 import com.recu.common.web.error.CommonErrorCode;
 import com.recu.guide.client.ContentClient;
@@ -35,8 +36,9 @@ import org.springframework.stereotype.Service;
 public class GuideService {
 
   private static final Set<String> OUTPUT_KEYS =
-      Set.of("focusSections", "sectionBadges", "section1Text", "section2Text", "section3Text");
-  private static final Set<String> BADGE_KEYS = Set.of("seq", "badge");
+      Set.of("badges", "lookFor", "readingOrder", "nextStudy");
+  // focusSections는 guide가 badges에서 만든다. AI가 같이 보내도 실패로 보지 않고 버린다
+  private static final String IGNORED_KEY = "focusSections";
   private static final Set<String> BADGES = Set.of("KEY", "LIGHT", "SKIP", "REF");
 
   private final GuideRepository guideRepository;
@@ -81,7 +83,9 @@ public class GuideService {
     GuideInputResponseDTO post = guideInput(postId);
     List<Section> sections = post.sections();
     GeneratedGuide generated =
-        parseAndValidate(callAi(buildPrompt(profile, post, sections)), sections.size());
+        parseAndValidate(
+            callAi(loadPrompt(), buildUserPrompt(profile, post, sections), sections.size()),
+            sections.size());
 
     AiGuideEntity guide =
         AiGuideEntity.builder()
@@ -114,34 +118,53 @@ public class GuideService {
     return response(saved, profile, false);
   }
 
-  private String callAi(String prompt) {
+  private String callAi(String instruction, String input, int sectionCount) {
     try {
-      return aiClient.generate(prompt);
+      return aiClient.generate(instruction, input, sectionCount);
     } catch (Exception exception) {
       throw aiUnavailable();
     }
   }
 
+  // AI 답(badges 객체 + 문단 3개)을 검사하고, 저장·응답 모양(sectionBadges 배열 + focusSections)으로 바꾼다
   private GeneratedGuide parseAndValidate(String raw, int sectionCount) {
     try {
       JsonNode root = objectMapper.readTree(raw);
-      if (!root.isObject() || !fieldNames(root).equals(OUTPUT_KEYS)) {
+      if (!root.isObject() || !hasOutputKeys(root)) {
         throw aiUnavailable();
       }
 
-      JsonNode badges = root.get("sectionBadges");
-      if (!badges.isArray()) {
+      // 구간 번호 "1"~"N"이 빠짐없이, 그 밖의 번호 없이 있어야 한다
+      JsonNode badges = root.get("badges");
+      if (!badges.isObject() || !fieldNames(badges).equals(seqKeys(sectionCount))) {
         throw aiUnavailable();
       }
-      badges.forEach(
-          badge -> {
-            if (!badge.isObject() || !fieldNames(badge).equals(BADGE_KEYS)) {
-              throw aiUnavailable();
-            }
-          });
 
-      GeneratedGuide generated = objectMapper.treeToValue(root, GeneratedGuide.class);
-      validate(generated, sectionCount);
+      ArrayNode sectionBadges = objectMapper.createArrayNode();
+      List<Integer> keySections = new ArrayList<>();
+      for (int seq = 1; seq <= sectionCount; seq++) {
+        String badge = badges.get(String.valueOf(seq)).textValue();
+        if (badge == null || !BADGES.contains(badge)) {
+          throw aiUnavailable();
+        }
+        sectionBadges.addObject().put("seq", seq).put("badge", badge);
+        if ("KEY".equals(badge)) {
+          keySections.add(seq);
+        }
+      }
+
+      GeneratedGuide generated =
+          new GeneratedGuide(
+              keySections, // focusSections = KEY 배지의 구간 번호
+              objectMapper.convertValue(sectionBadges, new TypeReference<List<SectionBadge>>() {}),
+              text(root, "lookFor"),
+              text(root, "readingOrder"),
+              text(root, "nextStudy"));
+      if (generated.section1Text() == null
+          || generated.section2Text() == null
+          || generated.section3Text() == null) {
+        throw aiUnavailable();
+      }
       return generated;
     } catch (BusinessException exception) {
       throw exception;
@@ -150,39 +173,23 @@ public class GuideService {
     }
   }
 
-  private void validate(GeneratedGuide generated, int sectionCount) {
-    if (generated.focusSections() == null
-        || generated.sectionBadges() == null
-        || generated.sectionBadges().size() != sectionCount
-        || generated.section1Text() == null
-        || generated.section2Text() == null
-        || generated.section3Text() == null) {
-      throw aiUnavailable();
-    }
+  private boolean hasOutputKeys(JsonNode root) {
+    Set<String> keys = fieldNames(root);
+    keys.remove(IGNORED_KEY);
+    return keys.equals(OUTPUT_KEYS);
+  }
 
-    List<Integer> keySections = new ArrayList<>();
-    for (int index = 0; index < generated.sectionBadges().size(); index++) {
-      SectionBadge sectionBadge = generated.sectionBadges().get(index);
-      if (sectionBadge == null
-          || sectionBadge.seq() != index + 1
-          || !BADGES.contains(sectionBadge.badge())) {
-        throw aiUnavailable();
-      }
-      if ("KEY".equals(sectionBadge.badge())) {
-        keySections.add(sectionBadge.seq());
-      }
+  private static Set<String> seqKeys(int sectionCount) {
+    Set<String> keys = new LinkedHashSet<>();
+    for (int seq = 1; seq <= sectionCount; seq++) {
+      keys.add(String.valueOf(seq));
     }
+    return keys;
+  }
 
-    if (sectionCount > 1 && keySections.size() == sectionCount) {
-      throw aiUnavailable();
-    }
-
-    if (generated.focusSections().stream()
-            .anyMatch(seq -> seq == null || seq < 1 || seq > sectionCount)
-        || new LinkedHashSet<>(generated.focusSections()).size() != generated.focusSections().size()
-        || !generated.focusSections().equals(keySections)) {
-      throw aiUnavailable();
-    }
+  private static String text(JsonNode root, String field) {
+    JsonNode node = root.get(field);
+    return node != null && node.isTextual() ? node.textValue() : null;
   }
 
   private GuideResponseDTO response(
@@ -202,11 +209,14 @@ public class GuideService {
     return new Basis(profile.careerYears(), profile.haveSkills(), profile.wantSkills());
   }
 
-  private String buildPrompt(
+  // user 메시지: 프로필 → 글 정보와 구간 수 → 목차 → 구간 본문(태그) → 채울 틀.
+  // 구간 수를 AI가 세지 않게 먼저 알려 주고, 본문 속 번호와 섞이지 않게 구간을 태그로 감싼다
+  private String buildUserPrompt(
       UserProfileResponseDTO profile, GuideInputResponseDTO post, List<Section> sections) {
+    int total = sections.size();
     StringBuilder input =
-        new StringBuilder(loadPrompt())
-            .append("\n\n[프로필]\n경력 연차: ")
+        new StringBuilder()
+            .append("<profile>\n경력 연차: ")
             .append(profile.careerYears())
             .append("\n희망 직무: ")
             .append(String.join(", ", profile.jobFields()))
@@ -214,25 +224,70 @@ public class GuideService {
             .append(String.join(", ", profile.haveSkills()))
             .append("\n관심 기술: ")
             .append(String.join(", ", profile.wantSkills()))
-            .append("\n\n[제목]\n")
-            .append(post.title())
-            .append("\n\n[계열]\n")
-            .append(post.field())
-            .append("\n\n[난이도]\n")
-            .append(post.level())
-            .append("\n\n[본문 구간]");
+            .append("\n</profile>\n\n<post title=\"")
+            .append(attr(post.title()))
+            .append("\" field=\"")
+            .append(attr(post.field()))
+            .append("\" level=\"")
+            .append(attr(post.level()))
+            .append("\" total=\"")
+            .append(total)
+            .append("\">\n구간 ")
+            .append(total)
+            .append("개 (total: ")
+            .append(total)
+            .append(")\n");
 
-    for (int index = 0; index < sections.size(); index++) {
+    for (int index = 0; index < total; index++) {
+      input
+          .append(index + 1)
+          .append(". ")
+          .append(oneLine(sections.get(index).heading()))
+          .append('\n');
+    }
+    for (int index = 0; index < total; index++) {
       Section section = sections.get(index);
       input
-          .append("\n\n[")
+          .append("\n<section seq=\"")
           .append(index + 1)
-          .append("]\n제목: ")
-          .append(section.heading())
-          .append("\n내용: ")
-          .append(section.contentText());
+          .append("\" heading=\"")
+          .append(attr(oneLine(section.heading())))
+          .append("\">\n")
+          .append(body(section.contentText()))
+          .append("\n</section>\n");
     }
+
+    input
+        .append("</post>\n\n이 글은 구간 ")
+        .append(total)
+        .append("개입니다. badges에 \"1\"부터 \"")
+        .append(total)
+        .append("\"까지 모든 구간 번호를 빠짐없이 넣고, 아래 틀의 빈칸을 채우세요.\n{\"badges\": {");
+    for (int seq = 1; seq <= total; seq++) {
+      input.append(seq > 1 ? ", " : "").append('"').append(seq).append("\": \"\"");
+    }
+    input.append("}, \"lookFor\": \"\", \"readingOrder\": \"\", \"nextStudy\": \"\"}");
     return input.toString();
+  }
+
+  // 태그 속성 값: 따옴표와 꺾쇠가 태그 경계를 깨지 않게 바꾼다
+  private static String attr(Object value) {
+    return String.valueOf(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;");
+  }
+
+  private static String oneLine(Object value) {
+    return String.valueOf(value).replace('\n', ' ').replace('\r', ' ');
+  }
+
+  // 본문: 내용은 그대로 두고, 구간 태그처럼 보이는 글자만 바꾼다
+  private static String body(String value) {
+    return value == null
+        ? ""
+        : value.replace("</section", "&lt;/section").replace("<section", "&lt;section");
   }
 
   private String loadPrompt() {

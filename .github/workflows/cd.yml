@@ -1,0 +1,220 @@
+# main에 push되면 바뀐 서비스 이미지만 빌드해 ECR에 올리고, EC2가 새 이미지를 받아 다시 띄우게 한다.
+# 배포 후 Gateway /actuator/health가 UP이 아니면 workflow를 실패로 표시한다.
+# 설계: docs/design.md 10장. EC2 실행 파일: infra/compose.prod.yaml
+#
+# 저장소 설정 (Admin)
+#   Environment production (배포 브랜치 main만)
+#   Secret   AWS_ROLE_ARN  OIDC로 맡을 IAM 역할. 계정 ID가 들어 있어 Secret으로 둔다
+#   Variable AWS_REGION    ap-northeast-2
+#
+# 처음 배포할 때(ECR이 비어 있을 때)는 Actions → CD → Run workflow로 전체를 빌드한다
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # 수동 실행은 8개 서비스를 모두 빌드한다
+
+# 배포가 겹치지 않게 하나씩 돌린다. 진행 중인 배포는 취소하지 않는다
+concurrency:
+  group: cd-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # OIDC 토큰으로 AWS 역할을 맡는다
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+
+jobs:
+  changes:
+    name: 바뀐 서비스 찾기
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.modules.outputs.modules }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3. 외부 액션이라 커밋 SHA로 고정
+        id: filter
+        if: github.event_name == 'push'
+        with:
+          # all: 모든 이미지가 같이 쓰는 파일. 바뀌면 전체 서비스를 빌드한다
+          filters: |
+            all:
+              - 'common/**'
+              - 'build.gradle'
+              - 'settings.gradle'
+              - 'gradle/**'
+              - 'gradlew'
+              - 'Dockerfile'
+              - '.dockerignore'
+              - '.github/workflows/cd.yml'
+            gateway:
+              - 'gateway/**'
+            discovery:
+              - 'discovery/**'
+            config:
+              - 'config/**'
+            user:
+              - 'user/**'
+            content:
+              - 'content/**'
+            collector:
+              - 'collector/**'
+            guide:
+              - 'guide/**'
+            bookmark:
+              - 'bookmark/**'
+
+      # 필터 결과 → 서비스 목록(JSON). 문서만 바뀌면 빈 목록이라 빌드·배포를 건너뛴다
+      - id: modules
+        env:
+          EVENT: ${{ github.event_name }}
+          ALL_CHANGED: ${{ steps.filter.outputs.all }}
+          CHANGED: ${{ steps.filter.outputs.changes }}
+        run: |
+          if [ "$EVENT" != "push" ] || [ "$ALL_CHANGED" = "true" ]; then
+            modules='["gateway","discovery","config","user","content","collector","guide","bookmark"]'
+          else
+            modules=$(echo "$CHANGED" | jq -c 'map(select(. != "all"))')
+          fi
+          echo "빌드할 서비스: $modules"
+          echo "modules=$modules" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build (${{ matrix.module }})
+    needs: changes
+    if: needs.changes.outputs.modules != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true # 하나라도 실패하면 배포하지 않는다
+      matrix:
+        module: ${{ fromJSON(needs.changes.outputs.modules) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true # 로그에 계정 ID를 남기지 않는다
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+        with:
+          mask-password: true
+
+      - uses: docker/setup-buildx-action@v4
+
+      # 태그: 커밋 SHA(배포·되돌리기 기준)와 latest (design.md 10장)
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          build-args: MODULE=${{ matrix.module }}
+          push: true
+          # 이미지 하나만 올린다. 이렇게 해야 deploy job에서 다른 태그를 붙일 수 있다
+          provenance: false
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/recu-${{ matrix.module }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/recu-${{ matrix.module }}:latest
+          cache-from: type=gha,scope=${{ matrix.module }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.module }}
+
+  deploy:
+    name: deploy (EC2)
+    needs: [changes, build]
+    runs-on: ubuntu-latest
+    # 배포 이력이 저장소 Deployments 화면에 쌓인다
+    environment: production
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      # EC2는 모든 서비스를 같은 IMAGE_TAG로 받는다. 이번에 빌드하지 않은 서비스는
+      # latest 이미지에 SHA 태그만 더 붙인다. 이미지가 같으니 그 컨테이너는 다시 만들어지지 않는다
+      - name: 빌드하지 않은 서비스에 SHA 태그 붙이기
+        env:
+          BUILT: ${{ needs.changes.outputs.modules }}
+          SHA: ${{ github.sha }}
+        run: |
+          for m in gateway discovery config user content collector guide bookmark; do
+            if echo "$BUILT" | jq -e --arg m "$m" 'any(.[]; . == $m)' > /dev/null; then
+              continue
+            fi
+            manifest_type=$(aws ecr batch-get-image --repository-name "recu-$m" \
+              --image-ids imageTag=latest --query 'images[0].imageManifestMediaType' --output text)
+            if [ -z "$manifest_type" ] || [ "$manifest_type" = "None" ]; then
+              echo "::error::recu-$m 에 latest 이미지가 없습니다. Actions → CD → Run workflow로 전체를 빌드하세요"
+              exit 1
+            fi
+            manifest=$(aws ecr batch-get-image --repository-name "recu-$m" \
+              --image-ids imageTag=latest --query 'images[0].imageManifest' --output text)
+            if ! out=$(aws ecr put-image --repository-name "recu-$m" --image-tag "$SHA" \
+              --image-manifest "$manifest" --image-manifest-media-type "$manifest_type" 2>&1); then
+              # 다시 실행해서 이미 태그가 있으면 넘어간다
+              echo "$out" | grep -q ImageAlreadyExistsException || { echo "$out"; exit 1; }
+            fi
+            echo "recu-$m: latest → $SHA"
+          done
+
+      # SSM Run Command로 EC2에 배포 명령을 보낸다 (22번 포트·SSH 키 없음, design.md 10장)
+      # 대상은 Name 태그가 recu-ec2인 인스턴스. 컨테이너가 모두 healthy이고 Gateway가 UP이면 성공
+      - name: EC2에 배포 명령 보내기
+        id: send
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          jq -n --arg sha "$SHA" --arg region "$AWS_REGION" '{
+            executionTimeout: ["900"],
+            commands: [
+              "set -eu",
+              "cd /opt/recu",
+              "REGISTRY=$(grep \"^ECR_REGISTRY=\" .env | cut -d= -f2-)",
+              "aws ecr get-login-password --region \($region) | docker login --username AWS --password-stdin \"$REGISTRY\"",
+              "export IMAGE_TAG=\($sha)",
+              "docker compose -f compose.prod.yaml pull",
+              "docker compose -f compose.prod.yaml up -d --wait --wait-timeout 600",
+              "docker compose -f compose.prod.yaml ps",
+              "curl -fsS http://localhost:8000/actuator/health | grep -q \"\\\"status\\\":\\\"UP\\\"\"",
+              "echo \"gateway UP ($IMAGE_TAG)\"",
+              "docker image prune -f"
+            ]
+          }' > params.json
+          command_id=$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --targets Key=tag:Name,Values=recu-ec2 \
+            --comment "recu deploy ${SHA::7}" \
+            --parameters file://params.json \
+            --query Command.CommandId --output text)
+          echo "SSM 명령: $command_id"
+          echo "command_id=$command_id" >> "$GITHUB_OUTPUT"
+
+      # 명령이 끝날 때까지 기다린다 (최대 15분). 실패하면 EC2 출력을 보여 주고 workflow를 실패로 끝낸다
+      - name: 배포 결과와 헬스체크 확인
+        env:
+          COMMAND_ID: ${{ steps.send.outputs.command_id }}
+        run: |
+          for _ in $(seq 1 90); do
+            read -r status targets <<< "$(aws ssm list-commands --command-id "$COMMAND_ID" \
+              --query 'Commands[0].[Status,TargetCount]' --output text)"
+            case "$status" in
+              Pending|InProgress|Delayed) sleep 10 ;;
+              *) break ;;
+            esac
+          done
+          aws ssm list-command-invocations --command-id "$COMMAND_ID" --details \
+            --query 'CommandInvocations[].CommandPlugins[].Output' --output text || true
+          echo "상태: $status, 대상 인스턴스: $targets"
+          if [ "$targets" = "0" ]; then
+            echo "::error::Name 태그가 recu-ec2인 실행 중인 인스턴스가 없습니다"
+            exit 1
+          fi
+          if [ "$status" != "Success" ]; then
+            echo "::error::배포 또는 헬스체크 실패 ($status)"
+            exit 1
+          fi

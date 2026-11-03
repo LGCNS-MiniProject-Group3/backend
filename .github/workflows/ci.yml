@@ -23,7 +23,7 @@ jobs:
     outputs:
       modules: ${{ steps.modules.outputs.modules }}
     steps:
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3. 외부 액션이라 커밋 SHA로 고정
         id: filter
         with:
           # all: 모든 모듈이 같이 쓰는 파일. 바뀌면 전체 모듈을 검사한다
@@ -77,15 +77,15 @@ jobs:
       matrix:
         module: ${{ fromJSON(needs.changes.outputs.modules) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
       # Gradle 캐시와 wrapper 검증
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5 # v6은 캐시 부분 이용 약관이 바뀌어 v5(Node 24)에 둔다
 
       - run: ./gradlew :${{ matrix.module }}:check
 
@@ -98,7 +98,7 @@ jobs:
           echo "dir=${MODULE//://}" >> "$GITHUB_OUTPUT"
           echo "name=${MODULE//:/-}" >> "$GITHUB_OUTPUT"
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-report-${{ steps.report.outputs.name }}
           path: ${{ steps.report.outputs.dir }}/build/reports/tests/test/

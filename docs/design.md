@@ -455,12 +455,13 @@ collect_job (
 
 ### AI 호출 설정
 
-가이드 생성(guide)과 글 분류(collector)는 원본의 Gemini 대신 OpenAI를 불러요. 두 서비스가 같은 방식으로 불러요.
+가이드 생성(guide)과 글 분류(collector)는 원본의 Gemini 대신 OpenAI를 불러요. 두 서비스가 같은 주소와 키로 부르고, 응답 형식만 달라요.
 
 | 항목 | 값 |
 | --- | --- |
 | 호출 | `POST https://api.openai.com/v1/chat/completions`, `Authorization: Bearer <키>` |
-| 응답 형식 | `response_format: {"type": "json_object"}`. 원본 Gemini의 `responseMimeType: application/json`과 같은 역할이라, 지시문에 "JSON"이라는 말이 들어 있어야 해요 |
+| 응답 형식 (collector) | `response_format: {"type": "json_object"}`. 원본 Gemini의 `responseMimeType: application/json`과 같은 역할이라, 지시문에 "JSON"이라는 말이 들어 있어야 해요 |
+| 응답 형식 (guide) | `response_format: {"type": "json_schema", "strict": true}`. 구간 배지 키("1"~"N")를 모두 필수로 정해 빠짐없이 쓰게 해요. 구간이 90개를 넘으면 스키마 크기 한도 때문에 `json_object`를 써요 |
 | 모델 | `gpt-4o-mini` |
 | 실패 | 실패·시간 초과·형식 오류는 원본처럼 502 `AI_UNAVAILABLE`. 재시도는 429·5xx일 때 |
 
