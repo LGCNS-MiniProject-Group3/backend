@@ -1,10 +1,149 @@
-# 5번 담당 — 로컬 local/dev 인프라 (MariaDB · Kafka)
-# 서비스 이름 mariadb / kafka 는 config application-dev.yml 과 동일해야 함
-# 앱·gateway 는 이후 추가. 지금은 인프라만.
+# 5번 담당 — 로컬 local/dev 인프라 (전체스택)
+# 서비스 이름 discovery / mariadb / kafka 는 config application-dev.yml 과 같아야 함
+
 
 name: recu
 
+x-app-env: &app-env
+  SPRING_PROFILES_ACTIVE: dev
+  CONFIG_URL: http://config:8888
+  JAVA_TOOL_OPTIONS: "-Dfile.encoding=UTF-8 -Duser.timezone=Asia/Seoul -Xmx256m"
+
+x-app-health: &app-health
+  interval: 10s
+  timeout: 5s
+  retries: 30
+  start_period: 60s
+
 services:
+  discovery:
+    build: { context: .., args: { MODULE: discovery } }
+    image: recu-discovery
+    container_name: recu-discovery
+    ports: [ "127.0.0.1:8761:8761" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8761/actuator/health || exit 1" ]
+      <<: *app-health
+
+  config:
+    build: { context: .., args: { MODULE: config } }
+    image: recu-config
+    container_name: recu-config
+    ports: [ "127.0.0.1:8888:8888" ]
+    environment:
+      CONFIG_REPO_URI: ${CONFIG_REPO_URI}
+      CONFIG_REPO_TOKEN: ${CONFIG_REPO_TOKEN:?Set CONFIG_REPO_TOKEN in .env}
+      ENCRYPT_KEY: ${ENCRYPT_KEY:?Set ENCRYPT_KEY in .env}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8888/actuator/health || exit 1" ]
+      <<: *app-health
+
+  user:
+    build: { context: .., args: { MODULE: user } }
+    image: recu-user
+    container_name: recu-user
+    ports: [ "127.0.0.1:8081:8081" ]
+    environment:
+      <<: *app-env
+    depends_on:
+      config: { condition: service_healthy }
+      discovery: { condition: service_healthy }
+      mariadb: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8081/actuator/health || exit 1" ]
+      <<: *app-health
+
+  content:
+    build: { context: .., args: { MODULE: content } }
+    image: recu-content
+    container_name: recu-content
+    ports: [ "127.0.0.1:8082:8082" ]
+    environment:
+      <<: *app-env
+    depends_on:
+      config: { condition: service_healthy }
+      discovery: { condition: service_healthy }
+      mariadb: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8082/actuator/health || exit 1" ]
+      <<: *app-health
+
+  collector:
+    build: { context: .., args: { MODULE: collector } }
+    image: recu-collector
+    container_name: recu-collector
+    ports: [ "127.0.0.1:8083:8083" ]
+    environment:
+      <<: *app-env
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      COLLECT_DATA_DIR: ${COLLECT_DATA_DIR:-}
+    depends_on:
+      config: { condition: service_healthy }
+      discovery: { condition: service_healthy }
+      mariadb: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8083/actuator/health || exit 1" ]
+      <<: *app-health
+
+  guide:
+    build: { context: .., args: { MODULE: guide } }
+    image: recu-guide
+    container_name: recu-guide
+    ports: [ "127.0.0.1:8084:8084" ]
+    environment:
+      <<: *app-env
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      config: { condition: service_healthy }
+      discovery: { condition: service_healthy }
+      mariadb: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8084/actuator/health || exit 1" ]
+      <<: *app-health
+
+  bookmark:
+    build: { context: .., args: { MODULE: bookmark } }
+    image: recu-bookmark
+    container_name: recu-bookmark
+    ports: [ "127.0.0.1:8085:8085" ]
+    environment:
+      <<: *app-env
+    depends_on:
+      config: { condition: service_healthy }
+      discovery: { condition: service_healthy }
+      mariadb: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8085/actuator/health || exit 1" ]
+      <<: *app-health
+
+  gateway:
+    build: { context: .., args: { MODULE: gateway } }
+    image: recu-gateway
+    container_name: recu-gateway
+    ports: [ "127.0.0.1:8000:8000" ]
+    environment:
+      <<: *app-env
+    depends_on:
+      config: { condition: service_healthy }
+      discovery: { condition: service_healthy }
+      user: { condition: service_healthy }
+      content: { condition: service_healthy }
+      collector: { condition: service_healthy }
+      guide: { condition: service_healthy }
+      bookmark: { condition: service_healthy }
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS localhost:8000/actuator/health || exit 1" ]
+      <<: *app-health
+
+
   mariadb:
     image: mariadb:11.4
     container_name: recu-mariadb
