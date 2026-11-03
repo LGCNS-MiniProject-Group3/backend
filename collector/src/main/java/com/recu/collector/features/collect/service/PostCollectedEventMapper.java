@@ -8,9 +8,11 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /** ImportedPost를 Kafka A(PostCollectedEvent)로 바꾼다. companyId는 호출하는 쪽이 넘긴다. */
@@ -40,7 +42,7 @@ public class PostCollectedEventMapper {
         ai == null ? null : ai.field(),
         ai == null ? null : ai.level(),
         ai == null ? null : ai.summary(),
-        toCategories(ai),
+        toCategories(row),
         toTags(ai, resolver),
         toSections(row));
   }
@@ -65,11 +67,18 @@ public class PostCollectedEventMapper {
     }
   }
 
-  private static List<String> toCategories(ImportedPost.Ai ai) {
-    if (ai == null || ai.field() == null || ai.field().isBlank()) {
+  /** 사이트가 붙인 분류어. AI 계열(field)과는 다른 값이다. */
+  private static List<String> toCategories(ImportedPost row) {
+    if (row.source_categories() == null) {
       return List.of();
     }
-    return List.of(ai.field());
+    Set<String> seen = new LinkedHashSet<>();
+    for (String name : row.source_categories()) {
+      if (name != null && !name.isBlank()) {
+        seen.add(name.trim());
+      }
+    }
+    return List.copyOf(seen);
   }
 
   private static List<PostCollectedEvent.Tag> toTags(

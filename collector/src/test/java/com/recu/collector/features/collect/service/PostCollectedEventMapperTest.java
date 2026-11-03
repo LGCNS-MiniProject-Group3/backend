@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.recu.collector.features.collect.domain.dto.ImportedPost;
 import com.recu.common.kafka.event.PostCollectedEvent;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,10 @@ class PostCollectedEventMapperTest {
       new PostCollectedEventMapper(new SectionSplitter());
 
   private ImportedPost row(String publishedAt, ImportedPost.Ai ai) {
+    return row(publishedAt, ai, List.of());
+  }
+
+  private ImportedPost row(String publishedAt, ImportedPost.Ai ai, List<String> sourceCategories) {
     return new ImportedPost(
         "토스",
         "ext-1",
@@ -23,7 +28,7 @@ class PostCollectedEventMapperTest {
         publishedAt,
         10,
         true,
-        List.of(),
+        sourceCategories,
         List.of(), // headings 없음 → sections []
         "<p>html</p>",
         "text",
@@ -58,12 +63,35 @@ class PostCollectedEventMapperTest {
 
     PostCollectedEvent event = mapper.toEvent(row("2026-03-18T00:00", ai), 5L, null);
 
-    assertThat(event.categories()).containsExactly("Backend");
     assertThat(event.tags()).hasSize(2);
     assertThat(event.tags().get(0).name()).isEqualToIgnoringCase("Kafka");
     assertThat(event.tags().get(0).rank()).isEqualTo(1); // 첫 Kafka
     assertThat(event.tags().get(1).name()).isEqualTo("Redis");
     assertThat(event.tags().get(1).rank()).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("ai가 없어도 사이트 분류어는 categories로 넣는다")
+  void 분류어_ai없음() {
+    PostCollectedEvent event =
+        mapper.toEvent(row("2026-03-18T00:00", null, List.of("Engineering", "인기글")), 5L, null);
+
+    assertThat(event.categories()).containsExactly("Engineering", "인기글");
+    assertThat(event.field()).isNull();
+  }
+
+  @Test
+  @DisplayName("field가 있어도 categories는 사이트 분류어. 빈 값·공백·중복은 뺀다")
+  void 분류어는_field와_별개() {
+    ImportedPost.Ai ai = new ImportedPost.Ai(true, List.of("Kafka"), "Backend", "중급", "요지");
+    PostCollectedEvent event =
+        mapper.toEvent(
+            row("2026-03-18T00:00", ai, Arrays.asList(" Engineering ", "Engineering", "", null)),
+            5L,
+            null);
+
+    assertThat(event.categories()).containsExactly("Engineering");
+    assertThat(event.field()).isEqualTo("Backend");
   }
 
   @Test
