@@ -101,6 +101,8 @@ Prometheus 수집 데이터는 `prometheus_data` 볼륨에 최대 3일 보관하
 
 ### 수집·연결 확인
 
+같은 compose 네트워크에 이름이 `zipkin`인 임시 컨테이너를 띄웠다면, 먼저 `docker stop zipkin`으로 중지해 이름 충돌을 피해주세요.
+
 1. #94(라이브러리)와 #95(설정)가 반영된 서비스 이미지로 실행해요.
 2. `http://127.0.0.1:9090/targets`에서 서비스 8개가 모두 UP인지 확인해요.
    업무 서비스 5개와 Gateway는 Eureka에서 자동으로 찾고, Discovery·Config는 고정 주소를 사용해요.
@@ -112,7 +114,7 @@ Prometheus 수집 데이터는 `prometheus_data` 볼륨에 최대 3일 보관하
    http_server_requests_seconds_count
    ```
 
-   서비스별 수집 상태는 `up{job=~"recu-.*"}`로 확인해요. 서비스 구분 라벨은 `application`이에요.
+   수집 상태는 `up{job=~"recu-.*"}`의 `instance`로 구분해요. HTTP 등 앱 지표의 서비스 구분 라벨 `application`은 #95 설정으로 앱이 붙이며, Prometheus는 중복으로 붙이지 않아요.
 4. Zipkin 화면에서 호출한 서비스의 trace를 검색해요. #95의 dev Zipkin 전송 주소는
    `http://zipkin:9411/api/v2/spans`여야 해요. 화면만 열리는 것과 실제 trace가 쌓이는 것은 별도 확인이에요.
 

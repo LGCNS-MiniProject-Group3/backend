@@ -17,17 +17,10 @@ scrape_configs:
       - source_labels: [__meta_eureka_app_name]
         regex: '(?i:gateway|user|content|collector|guide|bookmark)'
         action: keep
-      - source_labels: [__meta_eureka_app_name]
-        target_label: application
-        action: lowercase
 
   # Discovery와 Config는 Eureka에 등록하지 않아 고정 주소로 수집해요.
   - job_name: recu-infrastructure
     metrics_path: /actuator/prometheus
     static_configs:
       - targets: ['discovery:8761']
-        labels:
-          application: discovery
       - targets: ['config:8888']
-        labels:
-          application: config
