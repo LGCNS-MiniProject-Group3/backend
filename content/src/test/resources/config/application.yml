@@ -13,3 +13,8 @@ spring:
       auto-startup: false
     admin:
       auto-create: false
+
+# 테스트에서는 추적을 끈다. 켜 두면 Zipkin(9411)으로 보내다 실패한 로그가 쌓인다
+management:
+  tracing:
+    enabled: false

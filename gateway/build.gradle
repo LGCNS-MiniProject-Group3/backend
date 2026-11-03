@@ -9,6 +9,10 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     // Config Server의 갱신 신호를 Kafka로 받는다. WebFlux라 common-web을 쓰지 않아서 여기 따로 둔다
     implementation 'org.springframework.cloud:spring-cloud-starter-bus-kafka'
+    // 지표와 분산 추적. WebFlux라 common-web을 쓰지 않아서 여기 따로 둔다 (Feign은 쓰지 않음)
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+    implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
 
     // JWT 검사. user 서비스가 발급할 때 쓰는 것과 같은 버전 (원본 0.11 API)
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'

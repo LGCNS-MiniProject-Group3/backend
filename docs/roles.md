@@ -29,10 +29,10 @@
 | 단계 | 하는 것 |
 | --- | --- |
 | V1 | 서비스 5개 분리, 동기 통신(OpenFeign), 비동기 통신(Kafka 발행·수신), GitHub Actions CI/CD (ECR + EC2 + RDS, 필수 10번), 선택 1 Spring Cloud Bus · 2 설정 암호화 · 4 클라우드 실배포 |
-| V2 | Kafka 이벤트 동기화 처리 (재시도 · DLT · 중복 무시 · 순서 뒤바뀜, 선택 10번). V1 통합 테스트 통과 후 시작 |
-| 안 함 | Saga, outbox |
+| V2 | 모니터링(Prometheus + Grafana, 선택 10번), 분산 추적(Zipkin, 선택 6번), 부하 테스트(k6, 선택 7번). 2026-11-03 팀 회의에서 Kafka 동기화 처리 대신 정함 |
+| 안 함 | Saga, outbox, Kafka 이벤트 동기화 처리(재시도 · DLT · 순서 뒤바뀜) |
 
-V2 작업의 담당은 V1이 끝난 뒤 정해요. 수신 공통 설정은 6번, 수신 핸들러는 4번이 맡는 것을 기본으로 해요.
+V2 역할은 V1 역할과 별개로 1~6번이 다시 골랐어요. 맨 아래 [V2 역할](#v2-역할)에 있어요.
 
 ## 역할별 할 일
 
@@ -121,7 +121,7 @@ V2 작업의 담당은 V1이 끝난 뒤 정해요. 수신 공통 설정은 6번,
 | 6 guide · Kafka | 메시지 DTO 3개 · 토픽 확정 | guide 이전, ④⑤ + OpenAI, Kafka 공통 설정 | C 발행, 발행 · 수신 공통 설정 | 〃 |
 | 7 CI/CD · 테스트 | ci.yml, 브랜치 보호 | Dockerfile 템플릿, ECR | cd.yml, EC2 배포 서버, Secrets | 통합 테스트 체크리스트 실행 |
 
-여기까지가 V1이에요. V2(Kafka 동기화 처리)는 V1 통합 테스트가 통과한 뒤 시작해요.
+여기까지가 V1이에요. V2(모니터링 · 분산 추적 · 부하 테스트)는 아래 [V2 역할](#v2-역할)을 봐요.
 
 ## 협업 규칙
 
@@ -143,6 +143,38 @@ V2 작업의 담당은 V1이 끝난 뒤 정해요. 수신 공통 설정은 6번,
 | 6 | 권한 확인 | 일반 계정으로 관리자 API 호출, 토큰 없이 로그인 필요 API 호출 | 403 · 401 오류가 정해진 형식으로 와요 | Gateway |
 
 V2 검증 시나리오는 [design.md 6장](design.md#증빙-시나리오)에 있어요.
+
+## V2 역할
+
+2026-11-03 20:30 회의에서 정했어요. V1 번호와 상관없이 1~6번 역할을 다시 고르고, 두 역할씩 묶어 세 팀으로 나눴어요. 7번(CI/CD)은 V1 배포에 집중해요. 구현 마감은 11/04 15:00이에요.
+
+| 팀 | V2 역할 | 맡는 것 | 이슈 |
+| --- | --- | --- | --- |
+| **A 관측 기반** | 1 공통 기반 | 지표·추적 의존성(common-web·gateway·discovery·config), 설정 저장소 관측 설정, 설계 문서 | #94 · #95 · #97 |
+| | 5 모니터링 인프라 | compose에 Prometheus · Grafana · Zipkin, Eureka 자동 수집, prod 반영 여부 | #96 · #98 |
+| **B 부하 테스트** | 2 k6 시나리오 | k6 스크립트, 테스트 사용자 준비, 조회·쓰기 시나리오와 기준치 | (팀 B) |
+| | 3 실행·분석 | 부하 실행, Grafana·Zipkin으로 병목 분석, 결과 정리 | (팀 B) |
+| **C 분석·추적** | 4 대시보드·장애 | Grafana 대시보드 JSON, 장애 시나리오(bookmark·Kafka 중지) 분석 | (팀 C) |
+| | 6 Kafka·AI 관측 | Kafka 발행·수신 추적 연결, AI 응답시간·실패와 Kafka 발행 실패 지표, 가이드 생성 trace | (팀 C) |
+
+팀 사이 약속 (바꾸면 세 팀에 알려요)
+
+| 항목 | 값 |
+| --- | --- |
+| 지표 경로 · 서비스 라벨 | `/actuator/prometheus`, `application=<서비스 이름>` (앱이 붙임, Prometheus는 다시 붙이지 않음) |
+| 포트 (로컬) | Prometheus 9090, Grafana 3000, Zipkin 9411 |
+| 사용자 지표 이름 | `recu.ai.guide` (Timer), `recu.ai.guide.failures` (Counter, `reason`), `recu.kafka.publish.failures` (Counter, `topic`) |
+| 부하 대상 · 제외 | Gateway `http://localhost:8000`(compose dev). 새 가이드 생성(OpenAI 비용)과 관리자 수집은 부하에서 빼요. EC2는 7번과 시간을 맞춘 뒤에만 |
+
+V2 확인 체크리스트 (11/04 15:00)
+
+| # | 확인 | 성공 | 팀 |
+| --- | --- | --- | --- |
+| 1 | Prometheus Targets | 서비스 8개 UP | A |
+| 2 | Grafana 대시보드 | API를 부르면 서비스별 요청 수·지연이 움직임 | A · C |
+| 3 | Zipkin | 가이드 생성 한 번에 서비스 5개 이상 + Kafka 구간 | A · C |
+| 4 | k6 | 시나리오 결과 요약, 같은 시간대 Grafana에 부하가 보임 | B |
+| 5 | 장애 | bookmark·Kafka 중지 시 지표 변화와 회복 | C |
 
 ## 부록 A. 내부 API 번호표 (①~⑦)
 
