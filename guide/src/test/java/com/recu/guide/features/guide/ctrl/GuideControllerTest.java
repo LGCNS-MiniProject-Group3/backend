@@ -30,6 +30,7 @@ import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -50,9 +51,8 @@ class GuideControllerTest {
 
   // AI가 돌려줄 정상 답: 구간 2개 중 2번이 KEY
   private static final String AI_ANSWER =
-      "{\"focusSections\":[2],"
-          + "\"sectionBadges\":[{\"seq\":1,\"badge\":\"LIGHT\"},{\"seq\":2,\"badge\":\"KEY\"}],"
-          + "\"section1Text\":\"볼 부분\",\"section2Text\":\"읽는 순서\",\"section3Text\":\"이어서\"}";
+      "{\"badges\":{\"1\":\"LIGHT\",\"2\":\"KEY\"},"
+          + "\"lookFor\":\"볼 부분\",\"readingOrder\":\"읽는 순서\",\"nextStudy\":\"이어서\"}";
 
   @Autowired MockMvc mockMvc;
   @Autowired GuideRepository guideRepository;
@@ -75,7 +75,7 @@ class GuideControllerTest {
   void createsNewGuide() throws Exception {
     when(userClient.getProfile(USER_ID)).thenReturn(profile(3));
     when(contentClient.getGuideInput(POST_ID)).thenReturn(postInput());
-    when(aiClient.generate(anyString())).thenReturn(AI_ANSWER);
+    when(aiClient.generate(anyString(), anyString())).thenReturn(AI_ANSWER);
 
     requestGuide()
         .andExpect(status().isOk())
@@ -84,6 +84,66 @@ class GuideControllerTest {
         .andExpect(jsonPath("$.focusSections[0]").value(2));
     assertThat(guideRepository.count()).isEqualTo(1);
     verify(kafkaEventPublisher).publishGuideCreated(new GuideCreatedEvent(USER_ID, POST_ID));
+  }
+
+  @Test
+  @DisplayName("AI 답의 badges와 문단 3개를 응답 모양으로 바꾸고, KEY 목록은 배지에서 만든다")
+  void convertsAnswer() throws Exception {
+    givenNewGuide();
+
+    requestGuide()
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.focusSections.length()").value(1))
+        .andExpect(jsonPath("$.focusSections[0]").value(2))
+        .andExpect(jsonPath("$.sectionBadges[0].seq").value(1))
+        .andExpect(jsonPath("$.sectionBadges[0].badge").value("LIGHT"))
+        .andExpect(jsonPath("$.sectionBadges[1].seq").value(2))
+        .andExpect(jsonPath("$.sectionBadges[1].badge").value("KEY"))
+        .andExpect(jsonPath("$.section1Text").value("볼 부분"))
+        .andExpect(jsonPath("$.section2Text").value("읽는 순서"))
+        .andExpect(jsonPath("$.section3Text").value("이어서"));
+  }
+
+  @Test
+  @DisplayName("AI가 KEY 목록을 따로 보내도 쓰지 않고 배지의 KEY로 만든다")
+  void ignoresFocusSectionsFromAi() throws Exception {
+    givenNewGuide(
+        "{\"focusSections\":[1,2],\"badges\":{\"1\":\"LIGHT\",\"2\":\"KEY\"},"
+            + "\"lookFor\":\"볼 부분\",\"readingOrder\":\"읽는 순서\",\"nextStudy\":\"이어서\"}");
+
+    requestGuide()
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.focusSections.length()").value(1))
+        .andExpect(jsonPath("$.focusSections[0]").value(2));
+  }
+
+  @Test
+  @DisplayName("배지가 구간 수와 다르면 저장하지 않고 502 AI_UNAVAILABLE")
+  void badgeCountMismatch() throws Exception {
+    givenNewGuide(
+        "{\"badges\":{\"1\":\"KEY\"},"
+            + "\"lookFor\":\"볼 부분\",\"readingOrder\":\"읽는 순서\",\"nextStudy\":\"이어서\"}");
+
+    requestGuide()
+        .andExpect(status().isBadGateway())
+        .andExpect(jsonPath("$.code").value("AI_UNAVAILABLE"));
+    assertThat(guideRepository.count()).isZero();
+    verifyNoInteractions(kafkaEventPublisher);
+  }
+
+  @Test
+  @DisplayName("AI에게 구간 수, 구간 태그, 빈칸 틀을 담아 보낸다")
+  void sendsSectionCountAndTags() throws Exception {
+    givenNewGuide();
+
+    requestGuide().andExpect(status().isOk());
+    ArgumentCaptor<String> input = ArgumentCaptor.forClass(String.class);
+    verify(aiClient).generate(anyString(), input.capture());
+    assertThat(input.getValue())
+        .contains("total=\"2\"")
+        .contains("<section seq=\"1\" heading=\"들어가며\">\n내용 1\n</section>")
+        .contains("<section seq=\"2\" heading=\"핵심\">\n내용 2\n</section>")
+        .contains("{\"badges\": {\"1\": \"\", \"2\": \"\"}");
   }
 
   @Test
@@ -169,9 +229,13 @@ class GuideControllerTest {
 
   // ④⑤·AI가 모두 정상이라 새 가이드가 만들어지는 상황
   private void givenNewGuide() {
+    givenNewGuide(AI_ANSWER);
+  }
+
+  private void givenNewGuide(String aiAnswer) {
     when(userClient.getProfile(USER_ID)).thenReturn(profile(3));
     when(contentClient.getGuideInput(POST_ID)).thenReturn(postInput());
-    when(aiClient.generate(anyString())).thenReturn(AI_ANSWER);
+    when(aiClient.generate(anyString(), anyString())).thenReturn(aiAnswer);
   }
 
   private ResultActions requestGuide() throws Exception {

@@ -26,7 +26,7 @@ import org.springframework.web.client.RestClient;
 class OpenAiGuideClientTest {
 
   private static final String URL = "https://api.openai.com/v1/chat/completions";
-  private static final String ANSWER = "{\\\"focusSections\\\":[1]}";
+  private static final String ANSWER = "{\\\"badges\\\":{\\\"1\\\":\\\"KEY\\\"}}";
   private static final String OK_BODY =
       "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"" + ANSWER + "\"}}]}";
 
@@ -42,18 +42,20 @@ class OpenAiGuideClientTest {
   }
 
   @Test
-  void 키를_Bearer로_싣고_JSON_형식으로_요청해_답을_꺼낸다() {
+  void 키를_Bearer로_싣고_지시문은_system_글은_user로_보내_답을_꺼낸다() {
     openAi
         .expect(requestTo(URL))
         .andExpect(method(HttpMethod.POST))
         .andExpect(header("Authorization", "Bearer test-key"))
         .andExpect(jsonPath("$.model").value("gpt-4o-mini"))
-        .andExpect(jsonPath("$.messages[0].role").value("user"))
+        .andExpect(jsonPath("$.messages[0].role").value("system"))
         .andExpect(jsonPath("$.messages[0].content").value("지시문"))
+        .andExpect(jsonPath("$.messages[1].role").value("user"))
+        .andExpect(jsonPath("$.messages[1].content").value("글"))
         .andExpect(jsonPath("$.response_format.type").value("json_object"))
         .andRespond(withSuccess(OK_BODY, MediaType.APPLICATION_JSON));
 
-    assertThat(client.generate("지시문")).isEqualTo("{\"focusSections\":[1]}");
+    assertThat(client.generate("지시문", "글")).isEqualTo("{\"badges\":{\"1\":\"KEY\"}}");
     openAi.verify();
   }
 
@@ -62,7 +64,7 @@ class OpenAiGuideClientTest {
     openAi.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
     openAi.expect(requestTo(URL)).andRespond(withSuccess(OK_BODY, MediaType.APPLICATION_JSON));
 
-    assertThat(client.generate("지시문")).isEqualTo("{\"focusSections\":[1]}");
+    assertThat(client.generate("지시문", "글")).isEqualTo("{\"badges\":{\"1\":\"KEY\"}}");
     assertThat(sleeps).containsExactly(500L);
     openAi.verify();
   }
@@ -71,7 +73,7 @@ class OpenAiGuideClientTest {
   void 서버_오류가_세_번_이어지면_AI_UNAVAILABLE() {
     openAi.expect(times(3), requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_GATEWAY));
 
-    assertThatThrownBy(() -> client.generate("지시문"))
+    assertThatThrownBy(() -> client.generate("지시문", "글"))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(GuideErrorCode.AI_UNAVAILABLE);
@@ -83,7 +85,7 @@ class OpenAiGuideClientTest {
   void 키가_틀리면_다시_부르지_않고_AI_UNAVAILABLE() {
     openAi.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.UNAUTHORIZED));
 
-    assertThatThrownBy(() -> client.generate("지시문"))
+    assertThatThrownBy(() -> client.generate("지시문", "글"))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(GuideErrorCode.AI_UNAVAILABLE);
@@ -97,7 +99,7 @@ class OpenAiGuideClientTest {
         .expect(requestTo(URL))
         .andRespond(withSuccess("{\"choices\":[]}", MediaType.APPLICATION_JSON));
 
-    assertThatThrownBy(() -> client.generate("지시문"))
+    assertThatThrownBy(() -> client.generate("지시문", "글"))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(GuideErrorCode.AI_UNAVAILABLE);
@@ -108,7 +110,7 @@ class OpenAiGuideClientTest {
     OpenAiGuideClient noModel =
         new OpenAiGuideClient(RestClient.builder().build(), "", sleeps::add);
 
-    assertThatThrownBy(() -> noModel.generate("지시문"))
+    assertThatThrownBy(() -> noModel.generate("지시문", "글"))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(GuideErrorCode.AI_UNAVAILABLE);

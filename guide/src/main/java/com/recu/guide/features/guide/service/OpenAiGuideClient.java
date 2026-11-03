@@ -54,14 +54,15 @@ public class OpenAiGuideClient {
         .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey);
   }
 
-  public String generate(String prompt) {
+  /** instruction: 지시문(system), input: 프로필과 글(user) */
+  public String generate(String instruction, String input) {
     if (model.isBlank()) {
       throw new BusinessException(GuideErrorCode.AI_UNAVAILABLE);
     }
 
     for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
-        return callOpenAi(prompt);
+        return callOpenAi(instruction, input);
       } catch (HttpClientErrorException.TooManyRequests | HttpServerErrorException exception) {
         // 429(호출 한도)와 5xx는 잠깐 뒤 다시 부르면 되는 경우가 많다
         if (attempt == MAX_ATTEMPTS) {
@@ -84,7 +85,7 @@ public class OpenAiGuideClient {
     throw new BusinessException(GuideErrorCode.AI_UNAVAILABLE);
   }
 
-  private String callOpenAi(String prompt) {
+  private String callOpenAi(String instruction, String input) {
     JsonNode response =
         restClient
             .post()
@@ -94,7 +95,9 @@ public class OpenAiGuideClient {
                     "model",
                     model,
                     "messages",
-                    List.of(Map.of("role", "user", "content", prompt)),
+                    List.of(
+                        Map.of("role", "system", "content", instruction),
+                        Map.of("role", "user", "content", input)),
                     // 지시문에 "JSON"이라는 말이 있어야 이 형식을 쓸 수 있다 (prompts/guide-v1.txt)
                     "response_format",
                     Map.of("type", "json_object")))
