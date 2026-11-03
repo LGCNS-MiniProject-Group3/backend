@@ -13,6 +13,13 @@ spring:
     hibernate:
       ddl-auto: create-drop
 
+  # Kafka 없이 돈다. 시작할 때 토픽을 만들러 가지 않고, 메시지 수신도 켜지 않는다
+  kafka:
+    admin:
+      auto-create: false
+    listener:
+      auto-startup: false
+
 eureka:
   client:
     enabled: false
@@ -21,6 +28,3 @@ jwt:
   secret: test-only-secret-key-must-be-at-least-32-bytes-long
   access-expiry-ms: 1800000
   refresh-expiry-ms: 604800000
-
-google:
-  client-id: test-client-id
