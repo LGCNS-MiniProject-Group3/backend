@@ -269,7 +269,8 @@ public class ProfileService {
 
   // 원본은 techTagRepository.existsById로 tech_tag 표를 직접 읽었다. 지금은 content의 ③으로 확인한다
   private boolean hasInvalidTechTagId(List<Long> techTagIds) {
-    if (techTagIds.stream().anyMatch(techTagId -> techTagId == null)) {
+    // content는 0 이하 번호를 400으로 막아서, 부르면 502가 된다. 부르기 전에 걸러 400으로 답한다
+    if (techTagIds.stream().anyMatch(techTagId -> techTagId == null || techTagId <= 0)) {
       return true;
     }
     if (techTagIds.isEmpty()) {

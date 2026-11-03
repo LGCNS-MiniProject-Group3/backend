@@ -27,6 +27,8 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -114,6 +116,19 @@ class ProfileControllerTest {
         .andExpect(jsonPath("$.field").value("wantSkillIds"));
     assertThat(skills.count()).isZero();
     assertThat(users.findById(userId).orElseThrow().getProfile_version()).isZero();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"0", "-1"})
+  @DisplayName("0 이하 기술 번호는 ③을 부르지 않고 400 INVALID_INPUT")
+  void nonPositiveSkillId(String techTagId) throws Exception {
+    mockMvc
+        .perform(profile(post("/api/profile"), "[" + techTagId + "]", "[3]"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+        .andExpect(jsonPath("$.field").value("haveSkillIds"));
+    verify(contentClient, never()).getTechTags(anyString());
+    assertThat(skills.count()).isZero();
   }
 
   @Test
