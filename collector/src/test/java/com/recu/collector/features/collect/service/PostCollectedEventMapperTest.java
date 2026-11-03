@@ -95,6 +95,24 @@ class PostCollectedEventMapperTest {
   }
 
   @Test
+  @DisplayName("파일 적재 요지도 앞뒤 공백을 지우고 150자까지만 싣는다")
+  void 요지_150자() {
+    String summary = "가".repeat(150);
+    ImportedPost.Ai ok =
+        new ImportedPost.Ai(true, List.of("Kafka"), "Backend", "중급", " " + summary + " ");
+    ImportedPost.Ai tooLong =
+        new ImportedPost.Ai(true, List.of("Kafka"), "Backend", "중급", "가".repeat(151));
+
+    PostCollectedEvent okEvent = mapper.toEvent(row("2026-03-18T00:00", ok), 5L, null);
+    PostCollectedEvent longEvent = mapper.toEvent(row("2026-03-18T00:00", tooLong), 5L, null);
+
+    assertThat(okEvent.summary()).isEqualTo(summary);
+    assertThat(longEvent.summary()).isNull();
+    assertThat(longEvent.field()).isEqualTo("Backend");
+    assertThat(longEvent.tags()).hasSize(1);
+  }
+
+  @Test
   @DisplayName("companyId·url을 그대로 넣는다")
   void 기본필드() {
     PostCollectedEvent event = mapper.toEvent(row("2026-03-18T00:00", null), 5L, null);
