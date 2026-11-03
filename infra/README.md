@@ -5,7 +5,7 @@
 | 실행 방법 | 프로필 | compose로 띄우는 것 | 앱 실행 |
 | --- | --- | --- | --- |
 | **local** | `local` | MariaDB · Kafka | IDE(bootRun)에서 직접 |
-| **dev** | `dev` | 전체 스택 (아래 10개) | compose가 이미지로 |
+| **dev** | `dev` | 전체 스택 + 모니터링 (13개) | compose가 이미지로 |
 
 서비스 이름 `discovery` · `mariadb` · `kafka`는 설정 저장소 `application-dev.yml`의 호스트 이름과 같아야 해요.
 
@@ -76,6 +76,67 @@ curl -i http://127.0.0.1:8000/api/tech-tags
 ```
 
 Eureka 대시보드에 GATEWAY · USER · CONTENT · COLLECTOR · GUIDE · BOOKMARK가 하나씩 UP이면 정상이에요.
+
+## 모니터링 (V2 · #96)
+
+dev 전체 스택 기동 명령에 Prometheus·Grafana·Zipkin이 포함돼요.
+기존 IDE 서버는 먼저 종료해 포트 충돌과 Eureka 중복 등록을 피해주세요.
+이번 작업으로 DB를 초기화할 필요는 없어요.
+
+```bash
+docker compose -f infra/compose.yaml --env-file .env up -d --build
+```
+
+| 도구 | 브라우저 주소 | 컨테이너 안 주소 |
+| --- | --- | --- |
+| Prometheus | http://127.0.0.1:9090 | http://prometheus:9090 |
+| Grafana | http://127.0.0.1:3000 | http://grafana:3000 |
+| Zipkin | http://127.0.0.1:9411 | http://zipkin:9411 |
+
+포트는 모두 내 컴퓨터(`127.0.0.1`)에만 열어요. EC2 반영은 #98에서 따로 정해요.
+Grafana 최초 로그인은 공식 이미지 기본 계정 `admin` / `admin`이며, 처음 로그인하면 비밀번호를 변경해요.
+변경한 비밀번호는 `grafana_data` 볼륨에 유지돼요. 실제 비밀번호는 Git에 올리지 않아요.
+Prometheus 수집 데이터는 `prometheus_data` 볼륨에 최대 3일 보관하고, Zipkin은 메모리에 저장하므로 재시작하면 trace가 사라져요.
+`down`은 DB·지표·Grafana 볼륨을 유지하지만, `down -v`는 이 데이터까지 모두 지워요.
+
+### 수집·연결 확인
+
+1. #94(라이브러리)와 #95(설정)가 반영된 서비스 이미지로 실행해요.
+2. `http://127.0.0.1:9090/targets`에서 서비스 8개가 모두 UP인지 확인해요.
+   업무 서비스 5개와 Gateway는 Eureka에서 자동으로 찾고, Discovery·Config는 고정 주소를 사용해요.
+   Eureka 등록·수집에는 약간의 시간이 걸려요. 등록 전에는 6개 서비스가 목록에 없을 수 있어요.
+3. Gateway로 API를 호출한 뒤 Grafana의 Explore에서 Prometheus를 선택하고 아래 지표를 조회해요.
+   요청이 없으면 HTTP 지표가 아직 없을 수 있어요.
+
+   ```promql
+   http_server_requests_seconds_count
+   ```
+
+   서비스별 수집 상태는 `up{job=~"recu-.*"}`로 확인해요. 서비스 구분 라벨은 `application`이에요.
+4. Zipkin 화면에서 호출한 서비스의 trace를 검색해요. #95의 dev Zipkin 전송 주소는
+   `http://zipkin:9411/api/v2/spans`여야 해요. 화면만 열리는 것과 실제 trace가 쌓이는 것은 별도 확인이에요.
+
+#94·#95가 아직 없으면 컨테이너와 화면은 떠도 지표 경로가 404이거나 trace가 없을 수 있어요.
+이 상태는 전체 연동 완료가 아니에요. 이 설정은 dev 전체 compose용이며 IDE(local) 서버 수집용은 아니에요.
+
+### 4번·2번 담당자에게 전달할 설정
+
+- Grafana 데이터소스는 기동 시 자동 등록돼요. 이름/UID는 `Prometheus` / `prometheus`, `Zipkin` / `zipkin`이에요.
+- 대시보드 JSON은 `infra/monitoring/grafana/provisioning/dashboards/json/`에 넣어요.
+  Grafana의 `ReCu` 폴더에 자동 반영돼요. 대시보드 내용 자체는 4번 담당 범위예요.
+  화면에서 만든 대시보드를 공유하려면 JSON으로 내보내 이 폴더에 저장해요.
+- k6 remote-write 수신 주소는 호스트 실행 시 `http://127.0.0.1:9090/api/v1/write`,
+  같은 compose 네트워크 안에서는 `http://prometheus:9090/api/v1/write`예요.
+
+### 설정 검사·로그
+
+비밀 설정을 출력하지 않고 compose 구문과 Prometheus 설정을 검사할 수 있어요.
+
+```bash
+docker compose -f infra/compose.yaml --env-file .env config --quiet
+docker compose -f infra/compose.yaml --env-file .env run --rm --no-deps --entrypoint /bin/promtool prometheus check config /etc/prometheus/prometheus.yml
+docker compose -f infra/compose.yaml --env-file .env logs --tail 100 prometheus grafana zipkin
+```
 
 ## 중지 · SQL 다시 적용
 
