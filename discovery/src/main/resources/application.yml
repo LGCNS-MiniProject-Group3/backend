@@ -13,3 +13,11 @@ eureka:
   server:
     # 개발 중에는 서비스를 자주 껐다 켠다. 꺼진 서비스가 목록에 오래 남지 않게 자기 보호 모드를 끈다
     enable-self-preservation: false
+
+# Prometheus가 지표를 가져간다 (V2 모니터링). discovery는 설정 저장소를 읽지 않아서 여기 둔다
+# 8761 포트는 외부(prod 보안 그룹)에 열지 않고 Gateway 라우트에도 없다
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
