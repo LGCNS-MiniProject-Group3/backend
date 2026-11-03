@@ -86,6 +86,10 @@ services:
       ENCRYPT_KEY: ${ENCRYPT_KEY:?Set ENCRYPT_KEY in .env}
       # Config Server는 설정 저장소를 읽지 않아서 Bus용 Kafka 주소를 여기서 받는다 (design.md 9장)
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    # Bus 때문에 Kafka에 붙는다. Kafka보다 먼저 뜨면 연결 재시도 로그가 쌓이고 health가 늦게 UP이 된다
+    depends_on:
+      kafka:
+        condition: service_healthy
     healthcheck:
       <<: *health
       test: ["CMD", "curl", "-fsS", "http://localhost:8888/actuator/health"]
