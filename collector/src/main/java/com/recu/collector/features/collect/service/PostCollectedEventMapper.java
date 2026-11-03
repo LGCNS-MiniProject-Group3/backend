@@ -41,7 +41,7 @@ public class PostCollectedEventMapper {
         ai == null ? null : ai.is_tech(),
         ai == null ? null : ai.field(),
         ai == null ? null : ai.level(),
-        ai == null ? null : ai.summary(),
+        ai == null ? null : PostClassifier.summary(ai.summary()),
         toCategories(row),
         toTags(ai, resolver),
         toSections(row));

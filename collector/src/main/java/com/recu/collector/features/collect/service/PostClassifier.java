@@ -40,6 +40,9 @@ public class PostClassifier {
   private static final Set<String> LEVELS = Set.of("입문", "중급", "고급");
   private static final int MAX_TECHS = 3;
 
+  /** prompts/classify-v1.txt 의 summary 규칙과 같은 값 */
+  private static final int MAX_SUMMARY_CHARS = 150;
+
   /** 호출 한도(429)나 일시 오류(5xx)가 나면 쉬었다가 다시 부른다. */
   private static final int MAX_ATTEMPTS = 5;
 
@@ -144,11 +147,20 @@ public class PostClassifier {
         techs.add(name);
       }
     }
-    String summary = node.path("summary").asText(null);
-    if (summary != null && summary.isBlank()) {
-      summary = null;
-    }
+    String summary = summary(node.path("summary").asText(null));
     return Optional.of(new ImportedPost.Ai(isTech, techs, field, level, summary));
+  }
+
+  /** 비었거나 150자를 넘으면 지시문을 어긴 답이라 그 칸만 비운다. 파일 적재 값도 발행 전에 같은 규칙을 거친다. */
+  static String summary(String value) {
+    if (value == null) {
+      return null;
+    }
+    String v = value.trim();
+    if (v.isEmpty() || v.codePointCount(0, v.length()) > MAX_SUMMARY_CHARS) {
+      return null;
+    }
+    return v;
   }
 
   private String call(String prompt) {
