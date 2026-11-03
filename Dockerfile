@@ -10,7 +10,8 @@ RUN test -n "$MODULE" || (echo "MODULE을 지정하세요. 예) --build-arg MODU
 WORKDIR /app
 COPY . .
 # 테스트는 CI가 돌린다. Gradle 캐시는 빌드 사이에 재사용한다
-RUN --mount=type=cache,target=/root/.gradle \
+# compose로 여러 서비스를 동시에 빌드하면 같은 캐시를 두고 Gradle 잠금이 시간 초과된다. locked로 Gradle 단계만 차례로 돌린다
+RUN --mount=type=cache,target=/root/.gradle,sharing=locked \
     ./gradlew --no-daemon :${MODULE}:bootJar -x test \
     && cp ${MODULE}/build/libs/${MODULE}-*.jar app.jar
 
