@@ -1,27 +1,16 @@
 spring:
-  cloud:
-    config:
-      enabled: false
-      import-check:
-        enabled: false
   application:
     name: user
-  datasource:
-    url: ${DB_URL:${SPRING_DATASOURCE_URL}}
-    username: ${DB_USER:${SPRING_DATASOURCE_USERNAME}}
-    password: ${DB_PASSWORD:${SPRING_DATASOURCE_PASSWORD}}
-    driver-class-name: ${DB_DRIVER:${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.mariadb.jdbc.Driver}}
-  jpa:
-    hibernate:
-      ddl-auto: validate
+
+  config:
+    # Config Server 연결
+    # 테스트에서는 Config Server가 없어도 실행 가능
+    # 실제 실행에서는 fail-fast로 Config Server가 필수
+    import: configserver:${CONFIG_URL:http://localhost:8888}
+
+  cloud:
+    config:
+      fail-fast: true
 
 server:
   port: 8081
-
-jwt:
-  secret: ${JWT_SECRET_KEY:${JWT_SECRET}}
-  access-expiry-ms: ${JWT_ACCESS_EXPIRY_MS:1800000}
-  refresh-expiry-ms: ${JWT_REFRESH_EXPIRY_MS:604800000}
-
-greeting:
-  message: ${GREETING_MESSAGE:USER local}

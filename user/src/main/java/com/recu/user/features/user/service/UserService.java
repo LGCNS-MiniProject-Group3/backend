@@ -61,12 +61,13 @@ public class UserService {
     UserEntity user =
         userRepository
             .findByEmail(request.getEmail())
+
             // 로그인시 이메일 없으면 출력하는 에러
-            .orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED));
+            .orElseThrow(() -> new BusinessException(UserErrorCode.INVALID_CREDENTIALS));
 
     // 비밀번호가 아니면?
     if (!passwordEncoder.matches(request.getPassword(), user.getPassword_hash())) {
-      throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
+      throw new BusinessException(UserErrorCode.INVALID_CREDENTIALS);
     }
 
     String accessToken = jwtProvider.createAccessToken(user.getUser_id(), user.getRole());

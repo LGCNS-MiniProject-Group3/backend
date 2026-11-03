@@ -15,6 +15,10 @@ final class AccessRule {
 
   private static final List<Permit> PUBLIC =
       List.of(
+
+          // 이메일 회원가입 및 로그인
+          new Permit(HttpMethod.POST, "/api/auth/signup"),
+          new Permit(HttpMethod.POST, "/api/auth/login"),
           new Permit(HttpMethod.POST, "/api/auth/google"),
           new Permit(HttpMethod.POST, "/api/auth/refresh"),
           new Permit(HttpMethod.GET, "/api/tech-tags"),
