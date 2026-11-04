@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import feign.Request;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationPredicate;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
+import org.springframework.http.server.observation.ServerRequestObservationContext;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -29,6 +34,7 @@ class CommonWebAutoConfigurationTest {
 
   @Autowired MockMvc mockMvc;
   @Autowired Request.Options feignOptions;
+  @Autowired ObservationPredicate actuatorObservationPredicate;
 
   @Test
   @DisplayName("X-User-Id 헤더가 있으면 회원 번호로 받는다")
@@ -206,5 +212,30 @@ class CommonWebAutoConfigurationTest {
     assertThat(feignOptions.connectTimeout()).isEqualTo(2_000);
     assertThat(feignOptions.connectTimeoutUnit()).isEqualTo(TimeUnit.MILLISECONDS);
     assertThat(feignOptions.readTimeout()).isEqualTo(5_000);
+  }
+
+  @Test
+  @DisplayName("/actuator/** 요청은 관측(추적·요청 지표)하지 않고, /api/** 요청은 관측한다")
+  void actuatorIsNotObserved() {
+    assertThat(isObserved("/actuator/prometheus")).isFalse();
+    assertThat(isObserved("/actuator/health")).isFalse();
+    assertThat(isObserved("/actuator")).isFalse();
+    assertThat(isObserved("/api/companies/1/posts")).isTrue();
+    assertThat(isObserved("/internal/users/1/preference")).isTrue();
+    assertThat(isObserved("/actuators")).isTrue();
+  }
+
+  @Test
+  @DisplayName("서버 요청이 아닌 관측(Feign 호출 등)은 그대로 둔다")
+  void otherObservationsAreKept() {
+    assertThat(actuatorObservationPredicate.test("http.client.requests", new Observation.Context()))
+        .isTrue();
+  }
+
+  private boolean isObserved(String path) {
+    MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
+    ServerRequestObservationContext context =
+        new ServerRequestObservationContext(request, new MockHttpServletResponse());
+    return actuatorObservationPredicate.test("http.server.requests", context);
   }
 }
