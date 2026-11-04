@@ -16,7 +16,7 @@
     "to": "now"
   },
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "links": [
     {
       "title": "추적 보기 (Zipkin)",
@@ -51,14 +51,14 @@
       "id": 1,
       "type": "stat",
       "title": "P1 서비스 상태",
-      "description": "서비스 8개 지표 수집 여부 (1 = UP). 업무 서비스 · gateway는 Eureka, discovery · config는 고정 주소 기준",
+      "description": "기대 서비스 8개 기준 수집 상태. UP(1) · DOWN(0) · 미등록·미수집(-1). 업무 서비스 · gateway는 Eureka 등록 해제 시 수집 대상에서 빠지므로 미등록·미수집으로 표시",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "h": 5,
-        "w": 12,
+        "w": 10,
         "x": 0,
         "y": 1
       },
@@ -81,15 +81,20 @@
             {
               "type": "value",
               "options": {
+                "-1": {
+                  "text": "미등록·미수집",
+                  "color": "orange",
+                  "index": 0
+                },
                 "0": {
                   "text": "DOWN",
                   "color": "red",
-                  "index": 0
+                  "index": 1
                 },
                 "1": {
                   "text": "UP",
                   "color": "green",
-                  "index": 1
+                  "index": 2
                 }
               }
             }
@@ -118,7 +123,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "label_replace(up{job=~\"recu-.*\"}, \"service\", \"$1\", \"instance\", \"(?:.+:)?([a-z]+):[0-9]+\")",
+          "expr": "max by (service) (label_replace(up{job=~\"recu-.*\"}, \"service\", \"$1\", \"instance\", \"(?:.+:)?([a-z]+):[0-9]+\"))\nor on (service)\n(\n  label_replace(vector(-1), \"service\", \"discovery\", \"\", \"\")\n  or label_replace(vector(-1), \"service\", \"config\", \"\", \"\")\n  or label_replace(vector(-1), \"service\", \"gateway\", \"\", \"\")\n  or label_replace(vector(-1), \"service\", \"user\", \"\", \"\")\n  or label_replace(vector(-1), \"service\", \"content\", \"\", \"\")\n  or label_replace(vector(-1), \"service\", \"collector\", \"\", \"\")\n  or label_replace(vector(-1), \"service\", \"guide\", \"\", \"\")\n  or label_replace(vector(-1), \"service\", \"bookmark\", \"\", \"\")\n)",
           "legendFormat": "{{service}}",
           "instant": true,
           "range": false
@@ -129,15 +134,15 @@
       "id": 2,
       "type": "stat",
       "title": "P2 Kafka 상태",
-      "description": "kafka-exporter 기준 브로커 수. 값 없음은 0(DOWN)으로 표시",
+      "description": "Kafka: exporter의 토픽 offset 조회 성공 여부. UP(1) · DOWN(0, exporter 수집 중 조회 실패) · 미수집(-1, exporter 미수집). kafka_brokers는 연결 실패 시에도 캐시 값을 내므로 미사용. exporter: kafka-exporter 수집 상태. UP · DOWN · 미등록(수집 대상 없음)",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "h": 5,
-        "w": 4,
-        "x": 12,
+        "w": 6,
+        "x": 10,
         "y": 1
       },
       "fieldConfig": {
@@ -159,21 +164,60 @@
             {
               "type": "value",
               "options": {
+                "-1": {
+                  "text": "미수집",
+                  "color": "orange",
+                  "index": 0
+                },
                 "0": {
                   "text": "DOWN",
                   "color": "red",
-                  "index": 0
+                  "index": 1
                 },
                 "1": {
                   "text": "UP",
                   "color": "green",
-                  "index": 1
+                  "index": 2
                 }
               }
             }
           ]
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "미등록",
+                        "color": "orange",
+                        "index": 0
+                      },
+                      "0": {
+                        "text": "DOWN",
+                        "color": "red",
+                        "index": 1
+                      },
+                      "1": {
+                        "text": "UP",
+                        "color": "green",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "reduceOptions": {
@@ -196,10 +240,21 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(kafka_brokers) or vector(0)",
-          "legendFormat": "Kafka",
           "instant": true,
-          "range": false
+          "range": false,
+          "legendFormat": "Kafka",
+          "expr": "clamp_max(count(kafka_topic_partition_current_offset), 1)\nor on () (0 * max(up{job=\"kafka-exporter\"} == 1))\nor on () vector(-1)"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false,
+          "legendFormat": "exporter",
+          "expr": "max(up{job=\"kafka-exporter\"})\nor on () vector(-1)"
         }
       ]
     },
@@ -207,7 +262,7 @@
       "id": 3,
       "type": "stat",
       "title": "P3 최근 5분 서버 오류",
-      "description": "최근 5분 Gateway 5xx 응답 수",
+      "description": "최근 5분 Gateway 5xx 응답 수. Gateway 미수집 시 미수집",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -237,7 +292,8 @@
               }
             ]
           },
-          "decimals": 0
+          "decimals": 0,
+          "noValue": "미수집"
         },
         "overrides": []
       },
@@ -262,7 +318,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(http_server_requests_seconds_count{application=\"gateway\", status=~\"5..\"}[5m])) or vector(0)",
+          "expr": "sum(increase(http_server_requests_seconds_count{application=\"gateway\", status=~\"5..\"}[5m]))\nor (0 * sum(rate(http_server_requests_seconds_count{application=\"gateway\"}[5m])))",
           "legendFormat": "5xx",
           "instant": true,
           "range": false
@@ -273,7 +329,7 @@
       "id": 4,
       "type": "stat",
       "title": "P4 미처리 메시지 합계",
-      "description": "recu.* 토픽 미처리 메시지 수 합계",
+      "description": "recu.* 토픽 미처리 메시지 수 합계 (미커밋 파티션 제외). 값 없음은 커밋 offset 없음 또는 exporter 미수집 (P2 exporter로 구분)",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -303,7 +359,8 @@
               }
             ]
           },
-          "decimals": 0
+          "decimals": 0,
+          "noValue": "값 없음"
         },
         "overrides": []
       },
@@ -328,7 +385,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(kafka_consumergroup_lag{topic=~\"recu.*\"}) or vector(0)",
+          "expr": "sum(kafka_consumergroup_lag{topic=~\"recu.*\"} >= 0)",
           "legendFormat": "lag",
           "instant": true,
           "range": false
@@ -352,7 +409,7 @@
       "id": 6,
       "type": "timeseries",
       "title": "P6 API별 요청 수",
-      "description": "업무 서비스별 /api/** 초당 요청 수 (gateway 중복 집계 제외)",
+      "description": "업무 서비스의 /api/** 메서드 · 경로별 초당 요청 수 (gateway 중복 집계 제외)",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -398,8 +455,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (uri) (rate(http_server_requests_seconds_count{application!=\"gateway\", uri=~\"/api/.*\"}[1m]))",
-          "legendFormat": "{{uri}}",
+          "expr": "sum by (application, method, uri) (rate(http_server_requests_seconds_count{application!=\"gateway\", uri=~\"/api/.*\"}[1m]))",
+          "legendFormat": "{{method}} {{uri}}",
           "range": true
         }
       ]
@@ -408,7 +465,7 @@
       "id": 7,
       "type": "timeseries",
       "title": "P7 API별 서버 오류율",
-      "description": "API별 5xx 응답 비율. 기준 1% 노랑 · 5% 빨강",
+      "description": "메서드 · 경로별 5xx 응답 비율. 기준 1% 노랑 · 5% 빨강",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -475,8 +532,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(sum by (uri) (rate(http_server_requests_seconds_count{application!=\"gateway\", uri=~\"/api/.*\", status=~\"5..\"}[1m])) or sum by (uri) (rate(http_server_requests_seconds_count{application!=\"gateway\", uri=~\"/api/.*\"}[1m])) * 0) / sum by (uri) (rate(http_server_requests_seconds_count{application!=\"gateway\", uri=~\"/api/.*\"}[1m]))",
-          "legendFormat": "{{uri}}",
+          "expr": "(sum by (application, method, uri) (rate(http_server_requests_seconds_count{application!=\"gateway\", uri=~\"/api/.*\", status=~\"5..\"}[1m])) or sum by (application, method, uri) (rate(http_server_requests_seconds_count{application!=\"gateway\", uri=~\"/api/.*\"}[1m])) * 0) / sum by (application, method, uri) (rate(http_server_requests_seconds_count{application!=\"gateway\", uri=~\"/api/.*\"}[1m]))",
+          "legendFormat": "{{method}} {{uri}}",
           "range": true
         }
       ]
@@ -485,7 +542,7 @@
       "id": 8,
       "type": "bargauge",
       "title": "P8 API 응답시간 p95 (가이드 제외)",
-      "description": "API별 p95 응답시간 (가이드 제외). 설정 저장소 히스토그램 설정 전 No data",
+      "description": "메서드 · 경로별 p95 응답시간 (가이드 제외). 설정 저장소 히스토그램 설정 전 No data",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -539,8 +596,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(http_server_requests_seconds_bucket{application!=\"gateway\", uri=~\"/api/.*\", uri!=\"/api/posts/{id}/guide\"}[5m])))",
-          "legendFormat": "{{uri}}",
+          "expr": "histogram_quantile(0.95, sum by (le, application, method, uri) (rate(http_server_requests_seconds_bucket{application!=\"gateway\", uri=~\"/api/.*\", uri!=\"/api/posts/{id}/guide\"}[5m])))",
+          "legendFormat": "{{method}} {{uri}}",
           "instant": true,
           "range": false
         }
@@ -550,7 +607,7 @@
       "id": 30,
       "type": "timeseries",
       "title": "API 평균 응답시간 (보조)",
-      "description": "API별 평균 응답시간. P8 대체 보조 칸",
+      "description": "메서드 · 경로별 평균 응답시간. P8 대체 보조 칸",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -596,8 +653,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (uri) (rate(http_server_requests_seconds_sum{application!=\"gateway\", uri=~\"/api/.*\"}[1m])) / sum by (uri) (rate(http_server_requests_seconds_count{application!=\"gateway\", uri=~\"/api/.*\"}[1m]))",
-          "legendFormat": "{{uri}}",
+          "expr": "sum by (application, method, uri) (rate(http_server_requests_seconds_sum{application!=\"gateway\", uri=~\"/api/.*\"}[1m])) / sum by (application, method, uri) (rate(http_server_requests_seconds_count{application!=\"gateway\", uri=~\"/api/.*\"}[1m]))",
+          "legendFormat": "{{method}} {{uri}}",
           "range": true
         }
       ]
@@ -1159,8 +1216,8 @@
     {
       "id": 13,
       "type": "timeseries",
-      "title": "P13 토픽별 유입 메시지",
-      "description": "토픽별 1분간 유입 메시지 수 (A recu.post.collected · B recu.profile.updated · C recu.guide.created)",
+      "title": "P13 토픽별 유입 메시지 (offset 변화량)",
+      "description": "토픽 끝 offset의 1분 변화량 = 유입 메시지 수 (A recu.post.collected · B recu.profile.updated · C recu.guide.created). 토픽 재생성 시 음수",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1174,14 +1231,14 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "min": 0,
           "custom": {
             "drawStyle": "bars",
             "lineWidth": 2,
             "fillOpacity": 60,
             "showPoints": "never",
             "spanNulls": true
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -1206,7 +1263,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (topic) (increase(kafka_topic_partition_current_offset{topic=~\"recu.*\"}[1m]))",
+          "expr": "sum by (topic) (delta(kafka_topic_partition_current_offset{topic=~\"recu.*\"}[1m]))",
           "legendFormat": "{{topic}}",
           "range": true
         }
@@ -1215,8 +1272,8 @@
     {
       "id": 14,
       "type": "timeseries",
-      "title": "P14 그룹별 처리 메시지",
-      "description": "컨슈머 그룹별 1분간 처리 메시지 수",
+      "title": "P14 그룹별 커밋 offset 변화량",
+      "description": "컨슈머 그룹 커밋 offset의 1분 변화량. 처리 성공 건수가 아님 (재시도 후 건너뛴 메시지 포함). offset 되돌림 시 음수",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1230,14 +1287,14 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "min": 0,
           "custom": {
             "drawStyle": "line",
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
             "spanNulls": true
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -1262,7 +1319,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (consumergroup, topic) (increase(kafka_consumergroup_current_offset{topic=~\"recu.*\"}[1m]))",
+          "expr": "sum by (consumergroup, topic) (delta(clamp_min(kafka_consumergroup_current_offset{topic=~\"recu.*\"}, 0)[1m:]))",
           "legendFormat": "{{consumergroup}} ← {{topic}}",
           "range": true
         }
@@ -1272,7 +1329,7 @@
       "id": 15,
       "type": "timeseries",
       "title": "P15 미처리 메시지 (lag)",
-      "description": "컨슈머 그룹별 미처리 메시지 수. 기준 10 노랑 · 100 빨강",
+      "description": "컨슈머 그룹별 미처리 메시지 수 (미커밋 파티션 제외). 기준 10 노랑 · 100 빨강",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1338,7 +1395,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (consumergroup, topic) (kafka_consumergroup_lag{topic=~\"recu.*\"})",
+          "expr": "sum by (consumergroup, topic) (kafka_consumergroup_lag{topic=~\"recu.*\"} >= 0)",
           "legendFormat": "{{consumergroup}} ← {{topic}}",
           "range": true
         }
@@ -1388,7 +1445,7 @@
           "id": 23,
           "type": "timeseries",
           "title": "P23 메모리 (힙)",
-          "description": "서비스별 힙 사용량. 업무 서비스 · gateway 상한 256MiB (-Xmx256m)",
+          "description": "서비스별 힙 사용량. -Xmx256m은 업무 서비스 · gateway에만 적용 (discovery · config는 JVM 기본값)",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -1408,25 +1465,8 @@
                 "lineWidth": 2,
                 "fillOpacity": 10,
                 "showPoints": "never",
-                "spanNulls": true,
-                "thresholdsStyle": {
-                  "mode": "line"
-                }
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  },
-                  {
-                    "color": "red",
-                    "value": 268435456
-                  }
-                ]
-              },
-              "max": 268435456
+                "spanNulls": true
+              }
             },
             "overrides": []
           },

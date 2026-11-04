@@ -107,7 +107,7 @@ Prometheus 수집 데이터는 `prometheus_data` 볼륨에 최대 3일 보관하
 1. #94(라이브러리)와 #95(설정)가 반영된 서비스 이미지로 실행해요.
 2. `http://127.0.0.1:9090/targets`에서 서비스 8개와 kafka-exporter, 모두 9개가 UP인지 확인해요.
    업무 서비스 5개와 Gateway는 Eureka에서 자동으로 찾고, Discovery·Config·kafka-exporter는 고정 주소를 사용해요.
-   kafka-exporter는 `job="kafka-exporter"`로 따로 수집해서 서비스 상태(`up{job=~"recu-.*"}`)에는 섞이지 않아요. Kafka 연결은 `kafka_brokers`가 1이면 정상이에요.
+   kafka-exporter는 `job="kafka-exporter"`로 따로 수집해서 서비스 상태(`up{job=~"recu-.*"}`)에는 섞이지 않아요. Kafka 연결은 `count(kafka_topic_partition_current_offset)`에 값이 나오면 정상이에요. `kafka_brokers`는 연결이 끊겨도 마지막 브로커 수를 낼 수 있어 연결 확인에는 쓰지 않아요.
    Eureka 등록·수집에는 약간의 시간이 걸려요. 등록 전에는 6개 서비스가 목록에 없을 수 있어요.
 3. Gateway로 API를 호출한 뒤 Grafana의 Explore에서 Prometheus를 선택하고 아래 지표를 조회해요.
    요청이 없으면 HTTP 지표가 아직 없을 수 있어요.
