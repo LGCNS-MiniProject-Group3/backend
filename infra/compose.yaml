@@ -237,6 +237,17 @@ services:
     environment:
       STORAGE_TYPE: mem
 
+  # Kafka는 Prometheus용 지표를 스스로 내지 않아, kafka-exporter가 토픽·그룹 오프셋과 밀린 메시지를 대신 읽어요 (V2 · #107)
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.10.0
+    container_name: recu-kafka-exporter
+    command: [ "--kafka.server=kafka:9092" ]
+    ports: [ "127.0.0.1:9308:9308" ]
+    depends_on:
+      kafka: { condition: service_healthy }
+    # 장애 시나리오에서 Kafka를 껐다 켜면 끊기므로 다시 붙게 해요
+    restart: unless-stopped
+
 volumes:
   mariadb_data:
   prometheus_data:
