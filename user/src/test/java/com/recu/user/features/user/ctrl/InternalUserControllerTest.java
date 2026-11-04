@@ -1,5 +1,6 @@
 package com.recu.user.features.user.ctrl;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -20,7 +21,9 @@ import com.recu.user.database.repository.UserJobFieldRepository;
 import com.recu.user.database.repository.UserRepository;
 import com.recu.user.database.repository.UserSkillRepository;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +34,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** ①·④가 부르는 쪽(content·guide)이 정한 필드 이름과 값으로 응답하는지. content ③은 가짜로 둔다. */
 @SpringBootTest
@@ -46,19 +50,25 @@ class InternalUserControllerTest {
   @Autowired UserSkillRepository skills;
   @MockitoBean ContentClient contentClient;
 
+  // ③이 불릴 때마다 트랜잭션 안이었는지 남긴다 (#115)
+  private final List<Boolean> inTransaction = new ArrayList<>();
+
   @BeforeEach
   void setUp() {
     skills.deleteAll();
     jobFields.deleteAll();
     users.deleteAll();
+    inTransaction.clear();
     when(contentClient.getTechTags(anyString()))
         .thenAnswer(
-            call ->
-                Arrays.stream(((String) call.getArgument(0)).split(","))
-                    .map(Long::valueOf)
-                    .filter(TECH_TAGS::containsKey)
-                    .map(id -> new TechTagResponseDTO(id, TECH_TAGS.get(id)))
-                    .toList());
+            call -> {
+              inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
+              return Arrays.stream(((String) call.getArgument(0)).split(","))
+                  .map(Long::valueOf)
+                  .filter(TECH_TAGS::containsKey)
+                  .map(id -> new TechTagResponseDTO(id, TECH_TAGS.get(id)))
+                  .toList();
+            });
   }
 
   @Test
@@ -132,6 +142,17 @@ class InternalUserControllerTest {
         .andExpect(jsonPath("$.wantSkills").isEmpty())
         .andExpect(jsonPath("$.profileVersion").value(0));
     verify(contentClient, never()).getTechTags(anyString());
+  }
+
+  @Test
+  @DisplayName("①·④는 content ③을 트랜잭션 밖에서 불러, ③을 기다리는 동안 DB 연결을 쥐지 않는다")
+  void callsContentOutsideTransaction() throws Exception {
+    Long userId = registered(3, 2);
+
+    mockMvc.perform(get("/internal/users/{userId}/preference", userId)).andExpect(status().isOk());
+    mockMvc.perform(get("/internal/users/{userId}/profile", userId)).andExpect(status().isOk());
+
+    assertThat(inTransaction).isNotEmpty().containsOnly(false);
   }
 
   @Test

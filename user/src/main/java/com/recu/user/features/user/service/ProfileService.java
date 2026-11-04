@@ -124,7 +124,7 @@ public class ProfileService {
         .build();
   }
 
-  @Transactional
+  // 트랜잭션 없이 읽는다. 조회마다 DB 연결을 바로 돌려주고, content ③을 기다리는 동안 연결을 쥐지 않는다 (#115)
   public ProfileResponseDTO getProfile(Long userId) {
     UserEntity user =
         userRepository
