@@ -525,6 +525,7 @@ Kafka → config(Bus 때문에 Kafka가 먼저), discovery·MariaDB(local·dev) 
 | 서비스 라벨 | 모든 지표에 `application=<서비스 이름>`. **앱이 붙이고 Prometheus는 다시 붙이지 않아요** (붙이면 `exported_application`으로 바뀜) |
 | 수집 | Prometheus가 업무 서비스·gateway는 Eureka(`eureka_sd_configs`)로 찾고, Eureka에 없는 discovery·config는 고정 주소로 5초마다 가져가요 (`infra/monitoring/prometheus.yml`) |
 | 추적 | 모든 요청을 추적(샘플링 1.0), `http://<recu.zipkin.host>:9411/api/v2/spans`로 전송. Feign 호출에 traceId가 이어져요. prod는 Zipkin을 올리기 전까지 샘플링 0 |
+| 추적 제외 | `/actuator/**` 요청(Prometheus 수집 등)은 추적·요청 지표에서 빼요. Spring Boot에 경로로 끄는 설정이 없어 `ObservationPredicate`로 막아요. 업무 서비스는 `common-web`, gateway는 gateway 모듈 (#119) |
 | 로그 | `%5p [서비스,traceId,spanId]`. gateway는 WebFlux라 `spring.reactor.context-propagation: auto`가 있어야 찍혀요 (#95) |
 | 대시보드 | Grafana 데이터소스(Prometheus·Zipkin)와 대시보드 JSON을 파일로 자동 등록 (`infra/monitoring/grafana/`) |
 | 부하 테스트 | k6로 Gateway(8000)를 호출. Prometheus의 remote-write 수신을 켜 두어 k6 결과도 같은 Grafana에서 봐요 |
