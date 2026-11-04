@@ -1,6 +1,9 @@
 package com.recu.content;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -31,13 +34,17 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -221,8 +228,13 @@ class ContentApiIntegrationTest {
   }
 
   private BlogPostEntity article(String slug, String field, boolean tech, int day) {
+    return article(first, slug, field, tech, day);
+  }
+
+  private BlogPostEntity article(
+      CompanyEntity company, String slug, String field, Boolean tech, int day) {
     return BlogPostEntity.builder()
-        .company(first)
+        .company(company)
         .url("https://example.com/posts/" + slug)
         .title(slug)
         .published_at(LocalDateTime.of(2026, 10, day, 12, 0))
@@ -532,5 +544,159 @@ class ContentApiIntegrationTest {
                 .content("{\"postIds\":[]}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$").isEmpty());
+  }
+
+  // ---- 기업 목록 · 글 목록 · 상세 응답 고정 (#117: 조회 방식을 바꿔도 응답은 같아야 한다) ----
+
+  @Test
+  void companyListCountsOnlyTechPostsAndKeepsEmptyCompany() throws Exception {
+    JsonNode list = companyList();
+
+    assertThat(names(list)).containsExactly("Alpha", "Empty");
+    // 기술 글이 아닌 notice는 매칭 글 수 · 기술 글 수 모두에서 빠진다
+    assertThat(counts(list.get(0))).containsExactly(1, 1, 3, 3);
+    assertThat(skillCounts(list.get(0))).containsOnly(entry("Kafka", 3));
+    assertThat(counts(list.get(1))).containsExactly(0, 1, 0, 0);
+    assertThat(skillCounts(list.get(1))).isEmpty();
+    assertThat(recommended(list)).containsExactly(true, false);
+  }
+
+  @Test
+  void companyListCountsDistinctMatchedPostsAndSortsBySkillsThenPosts() throws Exception {
+    TechTagEntity redis = techTags.findByName("Redis").orElseThrow();
+    TechTagEntity javaTag =
+        techTags.save(
+            TechTagEntity.builder().name("Java").field("Backend").selectable(true).build());
+    // Alpha: match 글 하나에 관심 기술 2개 (Kafka · Redis)
+    tag(match, redis);
+    // Beta: is_tech가 비어 있는 글도 기술 글, 관심 밖 기술(Java)은 세지 않는다
+    CompanyEntity beta = companies.save(company("Beta"));
+    BlogPostEntity betaPost = posts.save(article(beta, "beta", "Backend", null, 5));
+    tag(betaPost, redis);
+    tag(betaPost, javaTag);
+    // Gamma: Beta와 매칭 기술 수(1)가 같고 매칭 글 수(2 > 1)가 많다
+    CompanyEntity gamma = companies.save(company("Gamma"));
+    tag(posts.save(article(gamma, "gamma-1", "Backend", true, 6)), kafka);
+    tag(posts.save(article(gamma, "gamma-2", "Backend", true, 7)), kafka);
+    USER_BODY =
+        """
+        {"userId":12,"jobFields":["Backend"],"wantSkillNames":["Kafka","Redis"],"profileVersion":1}
+        """;
+
+    JsonNode list = companyList();
+
+    assertThat(names(list)).containsExactly("Alpha", "Gamma", "Beta", "Empty");
+    // 기술별로는 Kafka 3 + Redis 1이지만, 겹친 글은 중복 없이 3편
+    assertThat(counts(list.get(0))).containsExactly(2, 2, 3, 3);
+    assertThat(skillCounts(list.get(0))).containsOnly(entry("Kafka", 3), entry("Redis", 1));
+    assertThat(counts(list.get(1))).containsExactly(1, 2, 2, 2);
+    assertThat(skillCounts(list.get(1))).containsOnly(entry("Kafka", 2));
+    assertThat(counts(list.get(2))).containsExactly(1, 2, 1, 1);
+    assertThat(skillCounts(list.get(2))).containsOnly(entry("Redis", 1));
+    assertThat(counts(list.get(3))).containsExactly(0, 2, 0, 0);
+    assertThat(recommended(list)).containsExactly(true, false, false, false);
+  }
+
+  @Test
+  void companyListWithoutWantedSkillsStillCountsTechPosts() throws Exception {
+    USER_BODY =
+        """
+        {"userId":12,"jobFields":["Backend"],"wantSkillNames":[],"profileVersion":1}
+        """;
+
+    JsonNode list = companyList();
+
+    assertThat(names(list)).containsExactly("Alpha", "Empty");
+    assertThat(counts(list.get(0))).containsExactly(0, 0, 0, 3);
+    assertThat(skillCounts(list.get(0))).isEmpty();
+    assertThat(counts(list.get(1))).containsExactly(0, 0, 0, 0);
+  }
+
+  @Test
+  void companyDetailStatsComeFromTechPostsOnly() throws Exception {
+    mvc.perform(get("/api/companies/{id}", first.getCompany_id()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.stats.postCount").value(3))
+        .andExpect(jsonPath("$.stats.firstPublishedAt").value("2026-10-01"))
+        .andExpect(jsonPath("$.stats.lastPublishedAt").value("2026-10-03"))
+        .andExpect(
+            jsonPath(
+                "$.stats.topCategories[*].name",
+                containsInAnyOrder("Backend", "Frontend", "General")))
+        .andExpect(jsonPath("$.stats.topCategories[*].count", contains(1, 1, 1)))
+        .andExpect(jsonPath("$.stats.topSkills.length()").value(1))
+        .andExpect(jsonPath("$.stats.topSkills[0].name").value("Kafka"))
+        .andExpect(jsonPath("$.stats.topSkills[0].count").value(3));
+  }
+
+  @Test
+  void companyPostListKeepsPostFields() throws Exception {
+    mvc.perform(
+            get("/api/companies/{id}/posts", first.getCompany_id())
+                .param("onlyMySkills", "false")
+                .header("X-User-Id", "12"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.posts[*].title", contains("other", "general", "match")))
+        .andExpect(jsonPath("$.posts[2].postId").value(match.getBlog_post_id().intValue()))
+        .andExpect(jsonPath("$.posts[2].publishedAt").value("2026-10-01"))
+        .andExpect(jsonPath("$.posts[2].categories", contains("Backend")))
+        .andExpect(jsonPath("$.posts[2].level").value("중급"))
+        .andExpect(jsonPath("$.posts[2].summary").value("article summary"))
+        .andExpect(jsonPath("$.posts[2].skills", contains("Kafka")))
+        .andExpect(jsonPath("$.posts[2].charCount").value(33))
+        .andExpect(jsonPath("$.posts[2].sectionCount").value(2))
+        .andExpect(jsonPath("$.posts[2].originalUrl").value("https://example.com/posts/match"));
+  }
+
+  private void tag(BlogPostEntity post, TechTagEntity techTag) {
+    tags.save(
+        BlogPostTagEntity.builder()
+            .id(new BlogPostTagPk(post.getBlog_post_id(), techTag.getTech_tag_id()))
+            .blogPost(post)
+            .techTag(techTag)
+            .tag_rank(1)
+            .build());
+  }
+
+  private JsonNode companyList() throws Exception {
+    String body =
+        mvc.perform(get("/api/companies").header("X-User-Id", "12"))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    return json.readTree(body).path("companies");
+  }
+
+  private static List<String> names(JsonNode companies) {
+    List<String> result = new ArrayList<>();
+    for (JsonNode company : companies) {
+      result.add(company.path("name").asText());
+    }
+    return result;
+  }
+
+  // [매칭 기술 수, 관심 기술 수, 매칭 글 수, 기술 글 수]
+  private static List<Integer> counts(JsonNode company) {
+    return Stream.of("matchedSkillCount", "totalSkillCount", "matchedPostCount", "totalPostCount")
+        .map(field -> company.path(field).asInt())
+        .toList();
+  }
+
+  // matchedSkills는 순서를 보장하지 않아 이름 → 글 수로 비교한다
+  private static Map<String, Integer> skillCounts(JsonNode company) {
+    Map<String, Integer> result = new HashMap<>();
+    for (JsonNode skill : company.path("matchedSkills")) {
+      result.put(skill.path("name").asText(), skill.path("postCount").asInt());
+    }
+    return result;
+  }
+
+  private static List<Boolean> recommended(JsonNode companies) {
+    List<Boolean> result = new ArrayList<>();
+    for (JsonNode company : companies) {
+      result.add(company.path("recommended").asBoolean());
+    }
+    return result;
   }
 }
