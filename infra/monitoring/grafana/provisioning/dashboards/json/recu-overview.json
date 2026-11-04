@@ -134,7 +134,7 @@
       "id": 2,
       "type": "stat",
       "title": "P2 Kafka 상태",
-      "description": "Kafka: exporter의 토픽 offset 조회 성공 여부. UP(1) · DOWN(0, exporter 수집 중 조회 실패) · 미수집(-1, exporter 미수집). kafka_brokers는 연결 실패 시에도 캐시 값을 내므로 미사용. exporter: kafka-exporter 수집 상태. UP · DOWN · 미등록(수집 대상 없음)",
+      "description": "Kafka: UP(토픽 offset 조회 성공) · DOWN(exporter 수집 중 offset 없음, 또는 exporter가 Kafka 대기로 수집 한도 초과) · 미수집(exporter 응답 없음). kafka_brokers는 연결 실패 시에도 캐시 값을 내므로 미사용. exporter: UP · 응답 지연(실행 중이나 수집 한도 4초 초과, 수집 시간 3초 이상 기준) · DOWN(즉시 실패, 컨테이너 중지 등) · 미등록",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -210,6 +210,11 @@
                         "text": "UP",
                         "color": "green",
                         "index": 2
+                      },
+                      "2": {
+                        "text": "응답 지연",
+                        "color": "orange",
+                        "index": 3
                       }
                     }
                   }
@@ -243,7 +248,7 @@
           "instant": true,
           "range": false,
           "legendFormat": "Kafka",
-          "expr": "clamp_max(count(kafka_topic_partition_current_offset), 1)\nor on () (0 * max(up{job=\"kafka-exporter\"} == 1))\nor on () vector(-1)"
+          "expr": "clamp_max(count(kafka_topic_partition_current_offset), 1)\nor on () (0 * max(up{job=\"kafka-exporter\"} == 1))\nor on () (0 * max(scrape_duration_seconds{job=\"kafka-exporter\"} >= 3 and on (instance) (up{job=\"kafka-exporter\"} == 0)))\nor on () vector(-1)"
         },
         {
           "refId": "B",
@@ -254,7 +259,7 @@
           "instant": true,
           "range": false,
           "legendFormat": "exporter",
-          "expr": "max(up{job=\"kafka-exporter\"})\nor on () vector(-1)"
+          "expr": "(0 * max(scrape_duration_seconds{job=\"kafka-exporter\"} >= 3 and on (instance) (up{job=\"kafka-exporter\"} == 0)) + 2)\nor on () max(up{job=\"kafka-exporter\"})\nor on () vector(-1)"
         }
       ]
     },
