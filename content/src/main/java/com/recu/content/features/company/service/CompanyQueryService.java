@@ -2,12 +2,8 @@ package com.recu.content.features.company.service;
 
 import com.recu.common.web.error.BusinessException;
 import com.recu.common.web.error.CommonErrorCode;
-import com.recu.content.database.entity.BlogPostEntity;
 import com.recu.content.database.entity.BlogPostTagEntity;
 import com.recu.content.database.entity.CompanyEntity;
-import com.recu.content.database.entity.TechTagEntity;
-import com.recu.content.database.repository.BlogPostRepository;
-import com.recu.content.database.repository.BlogPostTagRepository;
 import com.recu.content.database.repository.CompanyRepository;
 import com.recu.content.database.repository.UserGuideFlagRepository;
 import com.recu.content.features.company.domain.dto.CollectionCompanyResponseDTO;
@@ -18,6 +14,9 @@ import com.recu.content.features.company.domain.dto.CompanyPostQueryDTO;
 import com.recu.content.features.company.domain.dto.CompanyResponseDTO;
 import com.recu.content.features.company.domain.dto.CompanyStatsDTO;
 import com.recu.content.features.company.repository.CompanyPostQueryRepository;
+import com.recu.content.features.company.repository.CompanyPostQueryRepository.CompanyPostCount;
+import com.recu.content.features.company.repository.CompanyPostQueryRepository.CompanySkillPostCount;
+import com.recu.content.features.company.repository.CompanyPostQueryRepository.EligiblePost;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -37,8 +36,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CompanyQueryService {
   private final CompanyRepository companyRepository;
-  private final BlogPostRepository blogPostRepository;
-  private final BlogPostTagRepository blogPostTagRepository;
   private final CompanyPostQueryRepository companyPostQueryRepository;
   private final UserGuideFlagRepository guideFlags;
 
@@ -57,69 +54,33 @@ public class CompanyQueryService {
   public CompanyListResponseDTO getCompanyList(List<String> wantSkills) {
     Set<String> wantSkillNames = new HashSet<>(wantSkills);
 
-    // is_tech == false인 글 제외
-    List<BlogPostEntity> techPosts =
-        blogPostRepository.findAll().stream()
-            .filter(post -> !Boolean.FALSE.equals(post.getIs_tech()))
-            .toList();
-
-    Set<Long> techPostIds =
-        techPosts.stream().map(BlogPostEntity::getBlog_post_id).collect(Collectors.toSet());
-
-    // 기업별 전체 글 수 계산
-    Map<CompanyEntity, Long> postsByCompany =
-        techPosts.stream()
-            .collect(Collectors.groupingBy(BlogPostEntity::getCompany, Collectors.counting()));
-
-    List<BlogPostTagEntity> blogPostTagEntity = blogPostTagRepository.findAll();
-
-    // 각 기업의 관심 기술별 글 수 계산
-    Map<CompanyEntity, Map<TechTagEntity, Integer>> tagsByCompany =
-        blogPostTagEntity.stream()
-            .filter(tag -> techPostIds.contains(tag.getBlogPost().getBlog_post_id()))
-            .filter(tag -> wantSkillNames.contains(tag.getTechTag().getName()))
-            .collect(
-                Collectors.groupingBy(
-                    tag -> tag.getBlogPost().getCompany(),
-                    Collectors.groupingBy(
-                        BlogPostTagEntity::getTechTag,
-                        Collectors.collectingAndThen(
-                            Collectors.mapping(
-                                tag -> tag.getBlogPost().getBlog_post_id(), Collectors.toSet()),
-                            Set::size))));
+    // 글 본문 없이 DB에서 센 값만 가져온다. 관심 기술이 없으면 매칭 집계는 건너뛴다 (#117)
+    Map<Long, Long> postsByCompany =
+        postCounts(companyPostQueryRepository.countTechPostsByCompany());
+    Map<Long, Long> matchedPostsByCompany =
+        wantSkillNames.isEmpty()
+            ? Map.of()
+            : postCounts(companyPostQueryRepository.countMatchedTechPostsByCompany(wantSkillNames));
+    Map<Long, List<SkillResponseDTO>> skillsByCompany =
+        wantSkillNames.isEmpty() ? Map.of() : matchedSkillsByCompany(wantSkillNames);
 
     List<CompanyDTO> companies =
         companyRepository.findAll().stream()
             .map(
                 company -> {
-                  Map<TechTagEntity, Integer> skillCounts =
-                      tagsByCompany.getOrDefault(company, Map.of());
-
-                  int matchedPostCount =
-                      blogPostTagEntity.stream()
-                          .filter(tag -> techPostIds.contains(tag.getBlogPost().getBlog_post_id()))
-                          .filter(tag -> tag.getBlogPost().getCompany().equals(company))
-                          .filter(tag -> wantSkillNames.contains(tag.getTechTag().getName()))
-                          .map(tag -> tag.getBlogPost().getBlog_post_id())
-                          .collect(Collectors.toSet())
-                          .size();
-
+                  Long companyId = company.getCompany_id();
                   List<SkillResponseDTO> matchedSkills =
-                      skillCounts.entrySet().stream()
-                          .map(
-                              entry ->
-                                  new SkillResponseDTO(entry.getKey().getName(), entry.getValue()))
-                          .toList();
+                      skillsByCompany.getOrDefault(companyId, List.of());
 
                   return new CompanyDTO(
-                      company.getCompany_id(),
+                      companyId,
                       company.getName(),
                       company.getSummary(),
                       company.getLogo_url(),
                       matchedSkills.size(),
                       wantSkillNames.size(),
-                      matchedPostCount,
-                      postsByCompany.getOrDefault(company, 0L).intValue(),
+                      matchedPostsByCompany.getOrDefault(companyId, 0L).intValue(),
+                      postsByCompany.getOrDefault(companyId, 0L).intValue(),
                       matchedSkills,
                       false);
                 })
@@ -151,15 +112,31 @@ public class CompanyQueryService {
     return CompanyListResponseDTO.builder().companies(companies).build();
   }
 
+  private static Map<Long, Long> postCounts(List<CompanyPostCount> counts) {
+    return counts.stream()
+        .collect(Collectors.toMap(CompanyPostCount::getCompanyId, CompanyPostCount::getPostCount));
+  }
+
+  private Map<Long, List<SkillResponseDTO>> matchedSkillsByCompany(Set<String> wantSkillNames) {
+    return companyPostQueryRepository.countMatchedTechPostsBySkill(wantSkillNames).stream()
+        .collect(
+            Collectors.groupingBy(
+                CompanySkillPostCount::getCompanyId,
+                Collectors.mapping(
+                    count ->
+                        new SkillResponseDTO(count.getSkillName(), count.getPostCount().intValue()),
+                    Collectors.toList())));
+  }
+
   @Transactional(readOnly = true)
   public List<CompanyPostQueryDTO> getCompanyPosts(Long companyId, Long userId) {
     if (!companyRepository.existsById(companyId)) {
       throw new BusinessException(CommonErrorCode.NOT_FOUND);
     }
-    List<BlogPostEntity> posts = companyPostQueryRepository.findEligiblePosts(companyId);
+    List<EligiblePost> posts = companyPostQueryRepository.findEligiblePosts(companyId);
     if (posts.isEmpty()) return List.of();
 
-    List<Long> postIds = posts.stream().map(BlogPostEntity::getBlog_post_id).toList();
+    List<Long> postIds = posts.stream().map(EligiblePost::getPostId).toList();
     Map<Long, List<String>> skills = skills(postIds);
     Map<Long, Long> sectionCounts = sectionCounts(postIds);
     Set<Long> guidedPostIds = new HashSet<>(guideFlags.findGuidedPostIds(userId, postIds));
@@ -167,17 +144,17 @@ public class CompanyQueryService {
         .map(
             post ->
                 new CompanyPostQueryDTO(
-                    post.getBlog_post_id(),
+                    post.getPostId(),
                     post.getTitle(),
-                    post.getPublished_at().toLocalDate(),
+                    post.getPublishedAt().toLocalDate(),
                     post.getField(),
                     post.getLevel(),
                     post.getSummary(),
-                    skills.getOrDefault(post.getBlog_post_id(), List.of()),
-                    post.getChar_count(),
-                    sectionCounts.getOrDefault(post.getBlog_post_id(), 0L).intValue(),
+                    skills.getOrDefault(post.getPostId(), List.of()),
+                    post.getCharCount(),
+                    sectionCounts.getOrDefault(post.getPostId(), 0L).intValue(),
                     post.getUrl(),
-                    guidedPostIds.contains(post.getBlog_post_id())))
+                    guidedPostIds.contains(post.getPostId())))
         .toList();
   }
 
@@ -191,14 +168,14 @@ public class CompanyQueryService {
             .findById(companyId)
             .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND));
 
-    List<BlogPostEntity> eligiblePosts = companyPostQueryRepository.findEligiblePosts(companyId);
+    List<EligiblePost> eligiblePosts = companyPostQueryRepository.findEligiblePosts(companyId);
     long postCount = eligiblePosts.size();
 
-    List<Long> postIds = eligiblePosts.stream().map(BlogPostEntity::getBlog_post_id).toList();
+    List<Long> postIds = eligiblePosts.stream().map(EligiblePost::getPostId).toList();
 
     List<Map<String, Object>> topCategories =
         eligiblePosts.stream()
-            .map(BlogPostEntity::getField)
+            .map(EligiblePost::getField)
             .filter(Objects::nonNull)
             .filter(field -> !field.isBlank())
             .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
@@ -241,11 +218,11 @@ public class CompanyQueryService {
             .firstPublishedAt(
                 eligiblePosts.isEmpty()
                     ? null
-                    : eligiblePosts.get(eligiblePosts.size() - 1).getPublished_at().toLocalDate())
+                    : eligiblePosts.get(eligiblePosts.size() - 1).getPublishedAt().toLocalDate())
             .lastPublishedAt(
                 eligiblePosts.isEmpty()
                     ? null
-                    : eligiblePosts.get(0).getPublished_at().toLocalDate())
+                    : eligiblePosts.get(0).getPublishedAt().toLocalDate())
             .topCategories(topCategories)
             .topSkills(topSkills)
             .build();
