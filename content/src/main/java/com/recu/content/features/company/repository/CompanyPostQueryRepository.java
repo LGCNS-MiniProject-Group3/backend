@@ -2,6 +2,7 @@ package com.recu.content.features.company.repository;
 
 import com.recu.content.database.entity.BlogPostEntity;
 import com.recu.content.database.entity.BlogPostTagEntity;
+import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
@@ -38,9 +39,57 @@ public interface CompanyPostQueryRepository extends Repository<BlogPostEntity, L
       """)
   List<SectionCount> findSectionCounts(@Param("postIds") List<Long> postIds);
 
+  // 기업 목록 (#117): 글 본문을 읽지 않고 DB에서 센다. 기술 글 = is_tech가 true 또는 null
+
+  @Query(
+      """
+      select p.company.company_id as companyId, count(p) as postCount
+      from BlogPostEntity p
+      where p.is_tech = true or p.is_tech is null
+      group by p.company.company_id
+      """)
+  List<CompanyPostCount> countTechPostsByCompany();
+
+  // 관심 기술이 하나라도 붙은 기술 글 수. 한 글에 관심 기술이 여러 개여도 1편
+  @Query(
+      """
+      select p.company.company_id as companyId, count(distinct p.blog_post_id) as postCount
+      from BlogPostTagEntity t join t.blogPost p
+      where (p.is_tech = true or p.is_tech is null) and t.techTag.name in :skillNames
+      group by p.company.company_id
+      """)
+  List<CompanyPostCount> countMatchedTechPostsByCompany(
+      @Param("skillNames") Collection<String> skillNames);
+
+  // 관심 기술별 기술 글 수
+  @Query(
+      """
+      select p.company.company_id as companyId, t.techTag.name as skillName,
+        count(distinct p.blog_post_id) as postCount
+      from BlogPostTagEntity t join t.blogPost p
+      where (p.is_tech = true or p.is_tech is null) and t.techTag.name in :skillNames
+      group by p.company.company_id, t.techTag.name
+      """)
+  List<CompanySkillPostCount> countMatchedTechPostsBySkill(
+      @Param("skillNames") Collection<String> skillNames);
+
   interface SectionCount {
     Long getPostId();
 
     Long getSectionCount();
+  }
+
+  interface CompanyPostCount {
+    Long getCompanyId();
+
+    Long getPostCount();
+  }
+
+  interface CompanySkillPostCount {
+    Long getCompanyId();
+
+    String getSkillName();
+
+    Long getPostCount();
   }
 }
