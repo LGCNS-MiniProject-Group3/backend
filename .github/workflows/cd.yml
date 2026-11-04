@@ -164,6 +164,7 @@ jobs:
 
       # SSM Run Command로 EC2에 배포 명령을 보낸다 (22번 포트·SSH 키 없음, design.md 10장)
       # 대상은 Name 태그가 recu-ec2인 인스턴스. 컨테이너가 모두 healthy이고 Gateway가 UP이면 성공
+      # pull은 --quiet. SSM은 출력 앞부분만 돌려줘서 진행 표시가 그 칸을 채우면 오류 줄이 잘린다 (#106)
       - name: EC2에 배포 명령 보내기
         id: send
         env:
@@ -177,7 +178,7 @@ jobs:
               "REGISTRY=$(grep \"^ECR_REGISTRY=\" .env | cut -d= -f2-)",
               "aws ecr get-login-password --region \($region) | docker login --username AWS --password-stdin \"$REGISTRY\"",
               "export IMAGE_TAG=\($sha)",
-              "docker compose -f compose.prod.yaml pull",
+              "docker compose -f compose.prod.yaml pull --quiet",
               "docker compose -f compose.prod.yaml up -d --wait --wait-timeout 600",
               "docker compose -f compose.prod.yaml ps",
               "curl -fsS http://localhost:8000/actuator/health | grep -q \"\\\"status\\\":\\\"UP\\\"\"",

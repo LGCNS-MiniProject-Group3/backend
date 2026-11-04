@@ -28,3 +28,7 @@ CLAUDE.local.md
 # 원본 저장소를 실수로 안에 받은 경우
 /mini8-backend/
 /mini8-frontend/
+
+# k6 결과 (폴더만 남김)
+infra/k6/results/*
+!infra/k6/results/.gitkeep
