@@ -19,7 +19,6 @@ import com.recu.user.features.user.domain.dto.ProfileRequestDTO;
 import com.recu.user.features.user.domain.dto.ProfileResponseDTO;
 import com.recu.user.features.user.domain.dto.ProfileResponseDTO.SkillResponseDTO;
 import com.recu.user.messaging.ProfileSaved;
-import jakarta.transaction.Transactional;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -30,6 +29,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @RequiredArgsConstructor
@@ -41,11 +41,17 @@ public class ProfileService {
   private final UserSkillRepository userSkillRepository;
   private final ContentClient contentClient;
   private final ApplicationEventPublisher events;
+  private final TransactionTemplate transactionTemplate;
 
-  @Transactional
+  // ③ 검증 → 저장(트랜잭션) → ③ 이름 채우기. ③은 트랜잭션 밖에서 불러 DB 연결을 쥐고 기다리지 않는다 (#115)
   public ProfileResponseDTO setProfile(Long userId, ProfileRequestDTO request) {
     validateProfileRequest(request);
+    SavedProfile saved = transactionTemplate.execute(status -> saveNewProfile(userId, request));
+    return response(userId, request, saved);
+  }
 
+  // 트랜잭션 안: 첫 프로필 저장, 저장된 기술 번호 재조회, B 발행 예약
+  private SavedProfile saveNewProfile(Long userId, ProfileRequestDTO request) {
     UserEntity user =
         userRepository
             .findById(userId)
@@ -100,31 +106,16 @@ public class ProfileService {
             .toList());
     //////////////////// user_skill 저장 ////////////////////
 
-    List<SkillResponseDTO> haveSkills =
-        userSkillRepository.findAllByUserAndSkillType(user, "HAVE").stream()
-            .map(skill -> skill.getId().getTechTagId())
-            .collect(collectingAndThen(toList(), this::skillsWithNames));
-
-    List<SkillResponseDTO> wantSkills =
-        userSkillRepository.findAllByUserAndSkillType(user, "WANT").stream()
-            .map(skill -> skill.getId().getTechTagId())
-            .collect(collectingAndThen(toList(), this::skillsWithNames));
+    List<Long> haveSkillIds = skillIds(user, "HAVE");
+    List<Long> wantSkillIds = skillIds(user, "WANT");
 
     // 커밋된 뒤에 B(recu.profile.updated)를 보낸다. 롤백되면 보내지 않는다 (ProfileUpdatedPublisher)
     events.publishEvent(new ProfileSaved(userId));
 
-    return ProfileResponseDTO.builder()
-        .name(user.getName())
-        .userId(userId)
-        .jobFields(request.getJobFields())
-        .careerYears(request.getCareerYears())
-        .haveSkills(haveSkills)
-        .wantSkills(wantSkills)
-        .profileVersion(1)
-        .build();
+    return new SavedProfile(user.getName(), 1, haveSkillIds, wantSkillIds);
   }
 
-  @Transactional
+  // 트랜잭션 없이 읽는다. 조회마다 DB 연결을 바로 돌려주고, content ③을 기다리는 동안 연결을 쥐지 않는다 (#115)
   public ProfileResponseDTO getProfile(Long userId) {
     UserEntity user =
         userRepository
@@ -156,10 +147,15 @@ public class ProfileService {
         .build();
   }
 
-  @Transactional
+  // ③ 검증 → 저장(트랜잭션) → ③ 이름 채우기. ③은 트랜잭션 밖에서 불러 DB 연결을 쥐고 기다리지 않는다 (#115)
   public ProfileResponseDTO editProfile(Long userId, ProfileRequestDTO request) {
     validateProfileRequest(request);
+    SavedProfile saved = transactionTemplate.execute(status -> saveEditedProfile(userId, request));
+    return response(userId, request, saved);
+  }
 
+  // 트랜잭션 안: 프로필 수정 저장, 저장된 기술 번호 재조회, B 발행 예약
+  private SavedProfile saveEditedProfile(Long userId, ProfileRequestDTO request) {
     UserEntity user =
         userRepository
             .findById(userId)
@@ -218,28 +214,36 @@ public class ProfileService {
             .toList());
     //////////////////// user_skill 수정 ////////////////////
 
-    List<SkillResponseDTO> haveSkills =
-        userSkillRepository.findAllByUserAndSkillType(user, "HAVE").stream()
-            .map(skill -> skill.getId().getTechTagId())
-            .collect(collectingAndThen(toList(), this::skillsWithNames));
-
-    List<SkillResponseDTO> wantSkills =
-        userSkillRepository.findAllByUserAndSkillType(user, "WANT").stream()
-            .map(skill -> skill.getId().getTechTagId())
-            .collect(collectingAndThen(toList(), this::skillsWithNames));
+    List<Long> haveSkillIds = skillIds(user, "HAVE");
+    List<Long> wantSkillIds = skillIds(user, "WANT");
 
     // 커밋된 뒤에 B(recu.profile.updated)를 보낸다. 롤백되면 보내지 않는다 (ProfileUpdatedPublisher)
     events.publishEvent(new ProfileSaved(userId));
 
+    return new SavedProfile(user.getName(), nextProfileVersion, haveSkillIds, wantSkillIds);
+  }
+
+  // 트랜잭션 안에서 저장한 값. 기술 이름은 커밋 뒤 ③으로 채운다
+  private record SavedProfile(
+      String name, int profileVersion, List<Long> haveSkillIds, List<Long> wantSkillIds) {}
+
+  // 트랜잭션 밖: 커밋된 저장 결과에 content ③으로 기술 이름을 채운다
+  private ProfileResponseDTO response(Long userId, ProfileRequestDTO request, SavedProfile saved) {
     return ProfileResponseDTO.builder()
-        .name(user.getName())
+        .name(saved.name())
         .userId(userId)
         .jobFields(request.getJobFields())
         .careerYears(request.getCareerYears())
-        .haveSkills(haveSkills)
-        .wantSkills(wantSkills)
-        .profileVersion(nextProfileVersion)
+        .haveSkills(skillsWithNames(saved.haveSkillIds()))
+        .wantSkills(skillsWithNames(saved.wantSkillIds()))
+        .profileVersion(saved.profileVersion())
         .build();
+  }
+
+  private List<Long> skillIds(UserEntity user, String skillType) {
+    return userSkillRepository.findAllByUserAndSkillType(user, skillType).stream()
+        .map(skill -> skill.getId().getTechTagId())
+        .toList();
   }
 
   private void validateProfileRequest(ProfileRequestDTO request) {

@@ -27,9 +27,12 @@ import feign.FeignException;
 import feign.Request;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,6 +47,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** 프로필 저장·조회가 content ③으로 기술 번호를 확인하고 이름을 채우는지, 저장이 끝나면 B를 보내는지. content와 Kafka 발행은 가짜로 둔다. */
 @SpringBootTest
@@ -61,6 +65,9 @@ class ProfileControllerTest {
   @Autowired UserSkillRepository skills;
   @MockitoBean ContentClient contentClient;
   @MockitoBean KafkaEventPublisher kafka;
+
+  // ③이 불릴 때마다 트랜잭션 안이었는지 남긴다 (#115)
+  private final List<Boolean> inTransaction = new ArrayList<>();
 
   private Long userId;
 
@@ -80,16 +87,14 @@ class ProfileControllerTest {
                     .updated_at(LocalDate.now())
                     .build())
             .getUser_id();
-    // ③처럼 있는 번호만, 같은 번호는 한 번만 돌려준다
+    inTransaction.clear();
+    // ③은 techTags()처럼 답하고, 불릴 때마다 트랜잭션 안이었는지 남긴다
     when(contentClient.getTechTags(anyString()))
         .thenAnswer(
-            call ->
-                Arrays.stream(((String) call.getArgument(0)).split(","))
-                    .map(Long::valueOf)
-                    .distinct()
-                    .filter(TECH_TAGS::containsKey)
-                    .map(id -> new TechTagResponseDTO(id, TECH_TAGS.get(id)))
-                    .toList());
+            call -> {
+              inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
+              return techTags(call.getArgument(0));
+            });
     when(kafka.publishProfileUpdated(any())).thenReturn(new CompletableFuture<>());
   }
 
@@ -166,6 +171,51 @@ class ProfileControllerTest {
         .andExpect(jsonPath("$.wantSkills[0].name").value("Kafka"));
   }
 
+  @Test
+  @DisplayName("조회는 content ③을 트랜잭션 밖에서 불러, ③을 기다리는 동안 DB 연결을 쥐지 않는다")
+  void getCallsContentOutsideTransaction() throws Exception {
+    mockMvc.perform(profile(post("/api/profile"), "[1]", "[3]")).andExpect(status().isCreated());
+    inTransaction.clear();
+
+    mockMvc.perform(get("/api/profile").header("X-User-Id", userId)).andExpect(status().isOk());
+
+    assertThat(inTransaction).isNotEmpty().containsOnly(false);
+  }
+
+  @Test
+  @DisplayName("등록 · 수정도 content ③을 트랜잭션 밖에서 불러, ③을 기다리는 동안 DB 연결을 쥐지 않는다")
+  void saveAndEditCallContentOutsideTransaction() throws Exception {
+    mockMvc.perform(profile(post("/api/profile"), "[1]", "[3]")).andExpect(status().isCreated());
+    mockMvc.perform(profile(put("/api/profile"), "[2]", "[4]")).andExpect(status().isOk());
+
+    assertThat(inTransaction).isNotEmpty().containsOnly(false);
+  }
+
+  @Test
+  @DisplayName("저장이 커밋된 뒤 이름 채우기(③)만 실패하면 502지만, 프로필은 저장된 채 남고 B도 1번 보낸다")
+  void nameFillFailureAfterCommitKeepsProfile() throws Exception {
+    AtomicInteger calls = new AtomicInteger();
+    // any(): 다시 스텁할 때 setUp의 가짜 응답이 빈 문자열로 불리지 않게 (다른 테스트와 같은 방식)
+    when(contentClient.getTechTags(any()))
+        .thenAnswer(
+            call -> {
+              // 검증 2번(보유 · 관심)은 성공하고, 커밋 뒤 이름 채우기부터 실패한다
+              if (calls.incrementAndGet() > 2) {
+                throw feignError(503);
+              }
+              return techTags(call.getArgument(0));
+            });
+
+    mockMvc
+        .perform(profile(post("/api/profile"), "[1]", "[3]"))
+        .andExpect(status().isBadGateway())
+        .andExpect(jsonPath("$.code").value("UPSTREAM_ERROR"));
+
+    assertThat(users.findById(userId).orElseThrow().getProfile_version()).isEqualTo(1);
+    assertThat(skills.count()).isEqualTo(2);
+    verify(kafka, times(1)).publishProfileUpdated(new ProfileUpdatedEvent(userId));
+  }
+
   // ---- B recu.profile.updated 발행 (#61) ----
 
   @Test
@@ -224,6 +274,16 @@ class ProfileControllerTest {
             {"jobFields": ["Backend"], "careerYears": 3, "haveSkillIds": %s, "wantSkillIds": %s}
             """
                 .formatted(haveSkillIds, wantSkillIds));
+  }
+
+  // ③처럼 있는 번호만, 같은 번호는 한 번만 돌려준다
+  private static List<TechTagResponseDTO> techTags(String ids) {
+    return Arrays.stream(ids.split(","))
+        .map(Long::valueOf)
+        .distinct()
+        .filter(TECH_TAGS::containsKey)
+        .map(id -> new TechTagResponseDTO(id, TECH_TAGS.get(id)))
+        .toList();
   }
 
   private static FeignException feignError(int status) {
