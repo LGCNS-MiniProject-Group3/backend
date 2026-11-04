@@ -1,6 +1,8 @@
 # k6 부하 테스트
 
-Gateway(8000) 하나로 요청을 보내고, 시나리오 4개를 차례로 돌려요. 결과는 시나리오별 **요청 수 · p95 · 오류율**로 요약돼요.
+Gateway(8000) 하나로 요청을 보내고, 기본으로 시나리오 1~3을 차례로 돌려요. 결과는 시나리오별 **요청 수 · p95 · 오류율**로 요약돼요.
+
+> **시나리오 4(가이드)는 기본 실행에서 빠져 있어요.** 캐시가 없으면 OpenAI가 불려 비용이 들어요. 팀과 정한 경우에만 `SCENARIOS=guide`로 명시해서 실행해요. 자세한 건 아래 [가이드와 OpenAI 비용](#가이드와-openai-비용)을 봐요.
 
 ## 데이터 흐름
 
@@ -23,7 +25,7 @@ k6 ──> 8000 gateway ─┬─> 8081 user ──────> 8082 content (�
 | 1 | 출근길 추천 탐색 | `browse` | 태그·기업·기업별 글 목록 70%, 글 상세 30% | 조회 API p95, 오류율 |
 | 2 | 북마크 쓸어담기 | `bookmark` | 글 조회 50%, 북마크 추가·삭제 40%(30%는 연타), 프로필 수정 10% | 쓰기 p95, 연타 시 409, Kafka B 발행 수 |
 | 3 | 프로필 업데이트 파도 | `profile` | 글·기업 조회 → 프로필 수정 → 기업 목록 다시 보기 | 프로필 수정 p95, 이벤트 적체 |
-| 4 | 가이드 재방문 러시 | `guide` | 글 상세 → 이미 만든 가이드 다시 열기 | 캐시 응답 p95, OpenAI 호출 0건 |
+| 4 (선택) | 가이드 재방문 러시 | `guide` | 글 상세 → 이미 만든 가이드 다시 열기 | 캐시 응답 p95, OpenAI 호출 0건. **기본 실행에서 제외** |
 
 각 시나리오는 `워밍업(30s) → 일정 부하(1m) → 최대 부하(30s) → 정리(10s)` 단계로 돌아요.
 
@@ -45,42 +47,65 @@ k6 run -e SCENARIOS=browse,bookmark infra/k6/main.js
 k6 run -e WARMUP=10s -e STEADY=20s -e PEAK=10s infra/k6/main.js
 ```
 
+회차별 결과를 파일로 남겨요. 보고서 표를 만들 때 써요. `infra/k6/results/`는 커밋되지 않아요(`.gitignore`).
+
 ```bash
-k6 run -e BASE_URL=http://<EC2 주소>:8000 -e SUMMARY_JSON=k6-summary.json infra/k6/main.js
+k6 run -e SUMMARY_JSON=infra/k6/results/run-01.json infra/k6/main.js
+```
+
+```bash
+k6 run -e BASE_URL=http://<EC2 주소>:8000 -e SUMMARY_JSON=infra/k6/results/run-01.json infra/k6/main.js
 ```
 
 | 변수 | 기본값 | 뜻 |
 | --- | --- | --- |
 | `BASE_URL` | `http://localhost:8000` | Gateway 주소 |
-| `SCENARIOS` | `browse,bookmark,profile,guide` | 돌릴 시나리오 |
-| `MODE` | `sequential` | `parallel`이면 4개를 한꺼번에 |
+| `SCENARIOS` | `browse,bookmark,profile` | 돌릴 시나리오. `guide`는 명시할 때만 |
+| `MODE` | `sequential` | `parallel`이면 고른 시나리오를 한꺼번에 |
 | `WARMUP` `STEADY` `PEAK` `COOLDOWN` | `30s` `1m` `30s` `10s` | 단계별 시간 |
 | `BROWSE_VUS` / `BROWSE_PEAK_VUS` | 20 / 50 | 일정 부하 / 최대 부하 VU. `BOOKMARK_*` 10/30, `PROFILE_*` 5/15, `GUIDE_*` 10/30 |
 | `P95_MS` | 500 | 시나리오별 p95 기준치 |
 | `ERROR_RATE` | 0.01 | 시나리오별 오류율 기준치 |
 | `GUIDE_CACHED_P95_MS` | 300 | 가이드 캐시 응답 p95 기준치 |
 | `GUIDE_USERS` / `GUIDE_POSTS` | 5 / 2 | 가이드 시나리오 고정 계정 수 / 글 수 |
-| `GUIDE_WARMUP` | `true` | 캐시가 없으면 setup에서 가이드를 한 번 만듦 |
-| `SUMMARY_JSON` | (없음) | 결과 전체를 JSON 파일로 저장 |
+| `GUIDE_WARMUP` | `false` | `true`면 캐시가 없을 때 setup에서 가이드를 만듦 (OpenAI 비용) |
+| `SUMMARY_JSON` | (없음) | 결과 전체를 JSON 파일로 저장. `infra/k6/results/` 아래를 권장 |
 
 ## 테스트 데이터
 
 `setup()`이 시작할 때 한 번 준비해요.
 
 1. `GET /api/tech-tags`로 기술 번호를 읽어요.
-2. 시나리오별로 최대 VU 수만큼 `가입 → 로그인 → 프로필 등록`을 해요. 이메일은 `k6-<시나리오>-<실행시각>-<n>@recu.test`라 실행마다 새 계정이에요.
+2. 고른 시나리오의 최대 VU를 **모두 더한 수**만큼 `가입 → 로그인 → 프로필 등록`을 해요(기본 50 + 30 + 15 = 95명). 이메일은 `k6-load-<실행시각>-<n>@recu.test`라 실행마다 새 계정이에요.
+   - VU 번호 하나에 계정 하나예요. k6의 VU 번호는 시나리오가 바뀌어도 이어서 늘어날 수 있어서, 시나리오별 최대 VU만큼만 만들면 두 VU가 같은 계정을 쓰게 돼요. 그러면 같은 글을 동시에 저장해 생긴 409가 오류율에 섞여요.
 3. 기업 목록과 기업별 글 목록에서 글 번호를 모아요.
-4. 가이드 시나리오는 **고정 계정** `k6-guide-<n>@recu.test`를 써요.
+4. 시나리오 4를 고른 경우에만 **고정 계정** `k6-guide-<n>@recu.test`를 준비해요.
 
 ### 가이드와 OpenAI 비용
 
 가이드 캐시는 (사용자, 글, profileVersion, promptVersion)이 같을 때만 맞아요. 그래서 가이드 시나리오는 프로필을 고치지 않는 고정 계정만 써요.
 
-- **처음 실행**: setup에서 `GUIDE_USERS × GUIDE_POSTS`개(기본 10개)의 가이드를 만들어요. 이때만 OpenAI를 불러요.
-- **다음 실행부터**: 같은 계정·글이라 모두 캐시로 답해요. setup 로그의 `이번에 새로 만든 가이드 0개`로 확인해요.
-- 부하 구간에서 `cached=false`가 오면 `guide_cache_miss`가 올라가고 기준치(`count==0`)에 걸려요.
-- OpenAI 키가 없거나 비용을 쓰면 안 되면 `GUIDE_WARMUP=false`로 돌려요. 캐시가 없으면 가이드 시나리오는 실패해요.
-- `promptVersion`이 바뀌면 캐시가 다시 비어요.
+시나리오 4는 OpenAI 비용이 들 수 있어서 **팀과 정한 경우에만** 돌려요.
+
+1. 처음 한 번만 캐시를 만들어요. 가이드 10개(`GUIDE_USERS × GUIDE_POSTS`)를 만들면서 OpenAI를 불러요. 부하는 거의 없게 짧게 돌려요.
+
+   ```bash
+   k6 run -e SCENARIOS=guide -e GUIDE_WARMUP=true -e WARMUP=1s -e STEADY=1s -e PEAK=1s -e COOLDOWN=1s infra/k6/main.js
+   ```
+
+2. 그다음부터는 `GUIDE_WARMUP` 없이 돌려요. 같은 계정·글이라 모두 캐시로 답해요.
+
+   ```bash
+   k6 run -e SCENARIOS=guide infra/k6/main.js
+   ```
+
+- 부하 구간에서 `cached=false`가 **한 번이라도** 오면 테스트를 바로 멈춰요. 캐시가 없는 채로 계속 돌면 요청마다 OpenAI가 불리기 때문이에요.
+- `promptVersion`이 바뀌거나 DB 볼륨을 지우면(`down -v`) 캐시가 다시 비어요. 1번부터 다시 해요.
+
+## 오류율이 튈 때 먼저 볼 것
+
+- **409가 섞였는지**: 계정은 VU 번호마다 따로 있어서 VU끼리 같은 계정을 쓰지 않아요. 그래도 409가 보이면 `*_PEAK_VUS`를 바꿨는지, 이전 실행에서 지우지 못한 북마크가 남았는지 확인해요.
+- **502가 섞였는지**: Feign 타임아웃이에요. content·user 로그를 같이 봐요.
 
 ## 이벤트 적체 확인 (시나리오 2·3)
 
@@ -117,6 +142,7 @@ Kafka B 발행 (프로필 수정)  …건, …건/초
 | --- | --- |
 | `main.js` | 진입점. 시나리오 조합, setup, 결과 요약 |
 | `scenarios/1-morning-browse.js` ~ `4-guide-revisit.js` | 시나리오별 요청 비율·기준치 |
+| `results/` | `SUMMARY_JSON` 결과 저장 위치. `.gitkeep`만 커밋 |
 | `lib/api.js` | Gateway 요청과 요청별 데이터 흐름 |
 | `lib/config.js` | 포트, 흐름 표기, 단계, 기준치 |
 | `lib/data.js` | 가입·로그인·프로필 준비, 글 번호 수집 |

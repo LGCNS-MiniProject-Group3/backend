@@ -13,7 +13,8 @@
 //
 // 환경 변수
 //   BASE_URL   Gateway 주소 (기본 http://localhost:8000)
-//   SCENARIOS  돌릴 시나리오. 쉼표로 구분 (기본 browse,bookmark,profile,guide)
+//   SCENARIOS  돌릴 시나리오. 쉼표로 구분 (기본 browse,bookmark,profile)
+//              guide(시나리오 4)는 OpenAI 비용이 들 수 있어 기본에서 뺐다. 팀과 정한 경우에만 명시한다
 //   MODE       sequential(기본, 하나씩 차례로) | parallel(한꺼번에)
 //   WARMUP / STEADY / PEAK / COOLDOWN, *_VUS / *_PEAK_VUS, P95_MS, ERROR_RATE … lib/config.js 참고
 import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
@@ -32,7 +33,7 @@ const LABEL = {
   guide: '4. 가이드 재방문 러시',
 };
 
-const selected = (__ENV.SCENARIOS || 'browse,bookmark,profile,guide')
+const selected = (__ENV.SCENARIOS || 'browse,bookmark,profile')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
@@ -63,21 +64,29 @@ export const bookmarkRun = bookmark.run;
 export const profileRun = profile.run;
 export const guideRun = guide.run;
 
+// VU 번호(exec.vu.idInTest)는 테스트 전체에서 1부터 매겨지고, 시나리오가 바뀌어도 이어서 늘어날 수 있다.
+// 선택한 시나리오의 최대 VU를 모두 더한 만큼 계정을 만들면, 어떤 VU 번호든 자기 계정이 따로 있다.
+// (예전에는 시나리오별 풀에서 __VU % 풀크기로 골라 두 VU가 같은 계정을 쓸 수 있었다 → 북마크 409가 오류율에 섞임)
+const PEAK_OF = { browse: VUS.browsePeak, bookmark: VUS.bookmarkPeak, profile: VUS.profilePeak };
+const USER_POOL = selected.reduce((sum, s) => sum + (PEAK_OF[s] || 0), 0);
+
 // 가상 사용자 준비: 가입 -> 로그인 -> 프로필 등록, 토큰을 VU에 나눠 준다
 export function setup() {
   console.log(`[setup] Gateway ${BASE_URL}, 시나리오 ${selected.join(', ')} (${sequential ? '차례로' : '한꺼번에'})`);
+  if (selected.includes('guide')) {
+    console.warn('[setup] 시나리오 4(guide) 포함: 캐시가 없으면 OpenAI가 불려 비용이 들어요. 팀과 정한 경우에만 실행하세요.');
+  }
 
   // 8000(gateway) -> 8082(content)
   const techIds = loadTechTagIds();
-  const data = { techIds, browseUsers: [], bookmarkUsers: [], profileUsers: [], guide: { users: [], postIds: [] } };
+  const data = { techIds, users: [], guide: { users: [], postIds: [] } };
 
-  if (selected.includes('browse')) data.browseUsers = prepareUsers('browse', VUS.browsePeak, techIds);
-  if (selected.includes('bookmark')) data.bookmarkUsers = prepareUsers('bookmark', VUS.bookmarkPeak, techIds);
-  if (selected.includes('profile')) data.profileUsers = prepareUsers('profile', VUS.profilePeak, techIds);
+  // 1~3 시나리오가 함께 쓰는 계정 풀. VU 번호 하나에 계정 하나
+  data.users = prepareUsers('load', Math.max(1, USER_POOL), techIds);
+  console.log(`[setup] 계정 ${data.users.length}개 준비 (VU 번호마다 1개)`);
 
-  // 목록용 기업·글 번호. 아무 계정이나 하나로 읽는다
-  const reader = data.browseUsers[0] || data.bookmarkUsers[0] || data.profileUsers[0] || prepareUsers('reader', 1, techIds)[0];
-  data.catalog = loadCatalog(reader.token);
+  // 목록용 기업·글 번호
+  data.catalog = loadCatalog(data.users[0].token);
 
   if (selected.includes('guide')) data.guide = prepareGuideUsers(techIds, data.catalog.postIds);
 

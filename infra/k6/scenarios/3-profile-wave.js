@@ -41,7 +41,7 @@ export const thresholds = {
 };
 
 export function run(data) {
-  const user = userFor(data.profileUsers);
+  const user = userFor(data.users);
 
   // 1) 둘러보기: 기업별 글 목록 → 글 상세
   check(api.companyPosts(user.token, pick(data.catalog.companyIds), true), {

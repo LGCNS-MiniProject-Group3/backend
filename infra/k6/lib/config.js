@@ -87,6 +87,7 @@ export const ERROR_RATE = Number(__ENV.ERROR_RATE || 0.01);
 // 가이드 캐시 시나리오용 고정 계정. 매번 새로 만들면 profileVersion이 달라져 캐시가 안 맞는다.
 export const GUIDE_USERS = Number(__ENV.GUIDE_USERS || 5);
 export const GUIDE_POSTS = Number(__ENV.GUIDE_POSTS || 2);
-// 캐시가 없을 때만 setup()에서 가이드를 한 번 만든다(OpenAI 호출). false면 만들지 않는다.
-export const GUIDE_WARMUP = (__ENV.GUIDE_WARMUP || 'true') === 'true';
+// true면 캐시가 없을 때 setup()에서 가이드를 한 번 만든다(OpenAI 호출, 비용 발생).
+// 비용 때문에 기본은 false. 팀과 정한 경우에만 GUIDE_WARMUP=true로 켠다.
+export const GUIDE_WARMUP = (__ENV.GUIDE_WARMUP || 'false') === 'true';
 export const LOAD_TEST_PASSWORD = __ENV.LOAD_TEST_PASSWORD || 'k6-load-test-pw';

@@ -32,7 +32,7 @@ export const thresholds = {
 };
 
 export function run(data) {
-  const { token } = userFor(data.browseUsers);
+  const { token } = userFor(data.users);
   const r = Math.random();
 
   if (r < 0.7) {

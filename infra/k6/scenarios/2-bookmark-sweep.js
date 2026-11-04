@@ -45,7 +45,7 @@ export const thresholds = {
 };
 
 export function run(data) {
-  const user = userFor(data.bookmarkUsers);
+  const user = userFor(data.users);
   const postId = pick(data.catalog.postIds);
   const r = Math.random();
 

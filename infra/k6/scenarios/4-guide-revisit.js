@@ -7,13 +7,17 @@
 //   POST /api/posts/{id}/guide  8000(gateway) -> 8084(guide) -> 8081(user) ④ profileVersion 조회 -> guide DB 캐시
 //                               (캐시 적중이면 8082(content) ⑤, OpenAI, Kafka C 모두 없음)
 //
+// OpenAI 비용이 들 수 있어 기본 실행(SCENARIOS)에서 빠져 있다. 팀과 정한 경우에만 SCENARIOS=guide로 돌린다.
+// 캐시 미스(cached=false)가 한 번이라도 나오면 테스트를 바로 멈춘다.
+//
 // 가이드는 (사용자, 글, profileVersion, promptVersion)이 같을 때만 캐시가 맞는다.
 // 그래서 setup()의 고정 계정(k6-guide-N@recu.test)만 쓰고, 이 계정들의 프로필은 고치지 않는다.
 import { check, sleep } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
 import * as api from '../lib/api.js';
 import { ERROR_RATE, GUIDE_CACHED_P95_MS, P95_MS, VUS, stages } from '../lib/config.js';
-import { pick, think, userFor } from '../lib/util.js';
+import exec from 'k6/execution';
+import { pick, sharedUserFor, think } from '../lib/util.js';
 
 export const NAME = 'guide';
 
@@ -41,7 +45,7 @@ export const thresholds = {
 };
 
 export function run(data) {
-  const user = userFor(data.guide.users);
+  const user = sharedUserFor(data.guide.users);
   const postId = pick(data.guide.postIds);
 
   check(api.postDetail(user.token, postId), { '글 상세 200': (res) => res.status === 200 });
@@ -50,7 +54,11 @@ export function run(data) {
   // 캐시가 없으면 OpenAI까지 가므로 오래 기다리지 않는다. 캐시 응답은 빨라야 한다
   const res = api.guide(user.token, postId, '10s');
   const cached = res.status === 200 && res.json('cached') === true;
-  if (res.status === 200 && !cached) guideCacheMiss.add(1);
+  if (res.status === 200 && !cached) {
+    guideCacheMiss.add(1);
+    // 캐시가 없다는 뜻이라 계속 돌리면 요청마다 OpenAI가 불린다. 첫 미스에서 바로 멈춘다
+    exec.test.abort('가이드 캐시가 없어요(cached=false). OpenAI 비용을 막으려고 테스트를 멈췄어요. README의 시나리오 4 준비를 확인하세요.');
+  }
   if (cached) guideCachedDuration.add(res.timings.duration);
   check(res, {
     '가이드 200': (x) => x.status === 200,
