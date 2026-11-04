@@ -45,11 +45,14 @@ x-client-depends: &client-depends
   kafka:
     condition: service_healthy
 
+# unhealthy 판정은 start_period + interval × retries 뒤 (지금 180s + 10s × 12 = 300s)
+# 서비스 5개가 동시에 뜨면 2 vCPU를 나눠 써서 150~172초 걸렸다. 60s(허용 180초)로는 content가 넘겨 gateway가 뜨지 않았다 (#106)
+# start_period 안에서도 성공하면 바로 healthy라서 늘려도 정상 기동은 늦어지지 않는다
 x-health: &health
   interval: 10s
   timeout: 5s
   retries: 12
-  start_period: 60s
+  start_period: 180s
 
 services:
   kafka:
