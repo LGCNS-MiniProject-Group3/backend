@@ -36,3 +36,6 @@ management:
     tags:
       # 다른 서비스와 같은 라벨. 설정 저장소를 읽지 않아서 여기 둔다 (설정 저장소 application.yml과 같은 값)
       application: ${spring.application.name}
+    # Bus의 Kafka 바인더 lag 지표는 지표 응답 때마다 Kafka를 최대 5초 기다려, Kafka 장애 시 수집 한도(4초)를 넘긴다 (#112)
+    enable:
+      "[spring.cloud.stream.binder.kafka.offset]": false
