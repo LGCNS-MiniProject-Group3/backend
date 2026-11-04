@@ -2,7 +2,8 @@
 
 Gateway(8000) 하나로 요청을 보내고, 기본으로 시나리오 1~3을 차례로 돌려요. 결과는 시나리오별 **요청 수 · p95 · 오류율**로 요약돼요.
 
-> **시나리오 4(가이드)는 기본 실행에서 빠져 있어요.** 캐시가 없으면 OpenAI가 불려 비용이 들어요. 팀과 정한 경우에만 `SCENARIOS=guide`로 명시해서 실행해요. 자세한 건 아래 [가이드와 OpenAI 비용](#가이드와-openai-비용)을 봐요.
+> **비용 없이 돌리려면 `SCENARIOS`에 `guide`를 넣지 않아요.** 기본값(`browse,bookmark,profile`)이 그 상태라 `k6 run infra/k6/main.js`는 OpenAI를 부르지 않아요.
+> `GUIDE_WARMUP=false`는 setup의 가이드 생성만 끌 뿐이라, 시나리오 4를 돌리면 캐시가 없을 때 부하 단계에서 OpenAI가 불려요. 시나리오 4는 OpenAI 비용이 드니 팀과 정한 경우에만 `SCENARIOS=guide`로 명시해서 실행해요. 자세한 건 아래 [가이드와 OpenAI 비용](#가이드와-openai-비용)을 봐요.
 
 ## 데이터 흐름
 
@@ -68,7 +69,7 @@ k6 run -e BASE_URL=http://<EC2 주소>:8000 -e SUMMARY_JSON=infra/k6/results/run
 | `ERROR_RATE` | 0.01 | 시나리오별 오류율 기준치 |
 | `GUIDE_CACHED_P95_MS` | 300 | 가이드 캐시 응답 p95 기준치 |
 | `GUIDE_USERS` / `GUIDE_POSTS` | 5 / 2 | 가이드 시나리오 고정 계정 수 / 글 수 |
-| `GUIDE_WARMUP` | `false` | `true`면 캐시가 없을 때 setup에서 가이드를 만듦 (OpenAI 비용) |
+| `GUIDE_WARMUP` | `false` | `true`면 setup에서 가이드 캐시를 만듦 (OpenAI 비용). `false`여도 시나리오 4의 부하 단계 요청은 나가므로 **비용을 막는 설정이 아님** |
 | `SUMMARY_JSON` | (없음) | 결과 전체를 JSON 파일로 저장. `infra/k6/results/` 아래를 권장 |
 
 ## 테스트 데이터
@@ -77,7 +78,7 @@ k6 run -e BASE_URL=http://<EC2 주소>:8000 -e SUMMARY_JSON=infra/k6/results/run
 
 1. `GET /api/tech-tags`로 기술 번호를 읽어요.
 2. 고른 시나리오의 최대 VU를 **모두 더한 수**만큼 `가입 → 로그인 → 프로필 등록`을 해요(기본 50 + 30 + 15 = 95명). 이메일은 `k6-load-<실행시각>-<n>@recu.test`라 실행마다 새 계정이에요.
-   - VU 번호 하나에 계정 하나예요. k6의 VU 번호는 시나리오가 바뀌어도 이어서 늘어날 수 있어서, 시나리오별 최대 VU만큼만 만들면 두 VU가 같은 계정을 쓰게 돼요. 그러면 같은 글을 동시에 저장해 생긴 409가 오류율에 섞여요.
+    - VU 번호 하나에 계정 하나예요. k6의 VU 번호는 시나리오가 바뀌어도 이어서 늘어날 수 있어서, 시나리오별 최대 VU만큼만 만들면 두 VU가 같은 계정을 쓰게 돼요. 그러면 같은 글을 동시에 저장해 생긴 409가 오류율에 섞여요.
 3. 기업 목록과 기업별 글 목록에서 글 번호를 모아요.
 4. 시나리오 4를 고른 경우에만 **고정 계정** `k6-guide-<n>@recu.test`를 준비해요.
 
@@ -85,7 +86,17 @@ k6 run -e BASE_URL=http://<EC2 주소>:8000 -e SUMMARY_JSON=infra/k6/results/run
 
 가이드 캐시는 (사용자, 글, profileVersion, promptVersion)이 같을 때만 맞아요. 그래서 가이드 시나리오는 프로필을 고치지 않는 고정 계정만 써요.
 
-시나리오 4는 OpenAI 비용이 들 수 있어서 **팀과 정한 경우에만** 돌려요.
+**비용 없는 실행은 시나리오 4를 빼는 것뿐이에요.** 기본 실행이 그 상태예요.
+
+```bash
+k6 run infra/k6/main.js
+```
+
+`GUIDE_WARMUP=false`로는 비용을 막을 수 없어요. 이 값은 setup의 가이드 생성만 끄고, 시나리오 4의 부하 단계에서는 VU마다 `POST /api/posts/{id}/guide`를 계속 보내요. 캐시가 없으면 그 요청이 OpenAI를 불러요.
+
+#### 시나리오 4를 돌리기로 팀과 정한 경우
+
+OpenAI 비용이 들어요. 아래 순서를 지켜요.
 
 1. 처음 한 번만 캐시를 만들어요. 가이드 10개(`GUIDE_USERS × GUIDE_POSTS`)를 만들면서 OpenAI를 불러요. 부하는 거의 없게 짧게 돌려요.
 
@@ -93,13 +104,13 @@ k6 run -e BASE_URL=http://<EC2 주소>:8000 -e SUMMARY_JSON=infra/k6/results/run
    k6 run -e SCENARIOS=guide -e GUIDE_WARMUP=true -e WARMUP=1s -e STEADY=1s -e PEAK=1s -e COOLDOWN=1s infra/k6/main.js
    ```
 
-2. 그다음부터는 `GUIDE_WARMUP` 없이 돌려요. 같은 계정·글이라 모두 캐시로 답해요.
+2. 그다음 부하를 걸어요. 같은 계정·글이라 캐시가 남아 있으면 모두 캐시로 답해요.
 
    ```bash
    k6 run -e SCENARIOS=guide infra/k6/main.js
    ```
 
-- 부하 구간에서 `cached=false`가 **한 번이라도** 오면 테스트를 바로 멈춰요. 캐시가 없는 채로 계속 돌면 요청마다 OpenAI가 불리기 때문이에요.
+- 부하 단계에서 `cached=false`가 오면 테스트를 멈춰요. 다만 멈추기 전에 이미 보낸 요청(최대 동시 VU 수만큼)은 OpenAI를 부를 수 있어요. 그래서 이 장치는 비용을 줄이는 안전장치일 뿐, 비용을 0으로 만들지는 않아요.
 - `promptVersion`이 바뀌거나 DB 볼륨을 지우면(`down -v`) 캐시가 다시 비어요. 1번부터 다시 해요.
 
 ## 오류율이 튈 때 먼저 볼 것
