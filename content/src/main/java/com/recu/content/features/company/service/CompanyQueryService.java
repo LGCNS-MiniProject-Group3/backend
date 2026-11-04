@@ -2,7 +2,6 @@ package com.recu.content.features.company.service;
 
 import com.recu.common.web.error.BusinessException;
 import com.recu.common.web.error.CommonErrorCode;
-import com.recu.content.database.entity.BlogPostEntity;
 import com.recu.content.database.entity.BlogPostTagEntity;
 import com.recu.content.database.entity.CompanyEntity;
 import com.recu.content.database.repository.CompanyRepository;
@@ -17,6 +16,7 @@ import com.recu.content.features.company.domain.dto.CompanyStatsDTO;
 import com.recu.content.features.company.repository.CompanyPostQueryRepository;
 import com.recu.content.features.company.repository.CompanyPostQueryRepository.CompanyPostCount;
 import com.recu.content.features.company.repository.CompanyPostQueryRepository.CompanySkillPostCount;
+import com.recu.content.features.company.repository.CompanyPostQueryRepository.EligiblePost;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -133,10 +133,10 @@ public class CompanyQueryService {
     if (!companyRepository.existsById(companyId)) {
       throw new BusinessException(CommonErrorCode.NOT_FOUND);
     }
-    List<BlogPostEntity> posts = companyPostQueryRepository.findEligiblePosts(companyId);
+    List<EligiblePost> posts = companyPostQueryRepository.findEligiblePosts(companyId);
     if (posts.isEmpty()) return List.of();
 
-    List<Long> postIds = posts.stream().map(BlogPostEntity::getBlog_post_id).toList();
+    List<Long> postIds = posts.stream().map(EligiblePost::getPostId).toList();
     Map<Long, List<String>> skills = skills(postIds);
     Map<Long, Long> sectionCounts = sectionCounts(postIds);
     Set<Long> guidedPostIds = new HashSet<>(guideFlags.findGuidedPostIds(userId, postIds));
@@ -144,17 +144,17 @@ public class CompanyQueryService {
         .map(
             post ->
                 new CompanyPostQueryDTO(
-                    post.getBlog_post_id(),
+                    post.getPostId(),
                     post.getTitle(),
-                    post.getPublished_at().toLocalDate(),
+                    post.getPublishedAt().toLocalDate(),
                     post.getField(),
                     post.getLevel(),
                     post.getSummary(),
-                    skills.getOrDefault(post.getBlog_post_id(), List.of()),
-                    post.getChar_count(),
-                    sectionCounts.getOrDefault(post.getBlog_post_id(), 0L).intValue(),
+                    skills.getOrDefault(post.getPostId(), List.of()),
+                    post.getCharCount(),
+                    sectionCounts.getOrDefault(post.getPostId(), 0L).intValue(),
                     post.getUrl(),
-                    guidedPostIds.contains(post.getBlog_post_id())))
+                    guidedPostIds.contains(post.getPostId())))
         .toList();
   }
 
@@ -168,14 +168,14 @@ public class CompanyQueryService {
             .findById(companyId)
             .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND));
 
-    List<BlogPostEntity> eligiblePosts = companyPostQueryRepository.findEligiblePosts(companyId);
+    List<EligiblePost> eligiblePosts = companyPostQueryRepository.findEligiblePosts(companyId);
     long postCount = eligiblePosts.size();
 
-    List<Long> postIds = eligiblePosts.stream().map(BlogPostEntity::getBlog_post_id).toList();
+    List<Long> postIds = eligiblePosts.stream().map(EligiblePost::getPostId).toList();
 
     List<Map<String, Object>> topCategories =
         eligiblePosts.stream()
-            .map(BlogPostEntity::getField)
+            .map(EligiblePost::getField)
             .filter(Objects::nonNull)
             .filter(field -> !field.isBlank())
             .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
@@ -218,11 +218,11 @@ public class CompanyQueryService {
             .firstPublishedAt(
                 eligiblePosts.isEmpty()
                     ? null
-                    : eligiblePosts.get(eligiblePosts.size() - 1).getPublished_at().toLocalDate())
+                    : eligiblePosts.get(eligiblePosts.size() - 1).getPublishedAt().toLocalDate())
             .lastPublishedAt(
                 eligiblePosts.isEmpty()
                     ? null
-                    : eligiblePosts.get(0).getPublished_at().toLocalDate())
+                    : eligiblePosts.get(0).getPublishedAt().toLocalDate())
             .topCategories(topCategories)
             .topSkills(topSkills)
             .build();
