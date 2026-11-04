@@ -34,6 +34,8 @@ k6 ──> 8000 gateway ─┬─> 8081 user ──────> 8082 content (�
 
 전체 스택을 띄운 뒤(`infra/README.md`의 dev) 저장소 루트에서 실행해요.
 
+> **부하 테스트는 로컬 compose에서만 해요. EC2(배포 서버)에는 부하를 걸지 않아요.** 비용 때문에 팀에서 정했어요.
+
 ```bash
 k6 run infra/k6/main.js
 ```
@@ -54,13 +56,9 @@ k6 run -e WARMUP=10s -e STEADY=20s -e PEAK=10s infra/k6/main.js
 k6 run -e SUMMARY_JSON=infra/k6/results/run-01.json infra/k6/main.js
 ```
 
-```bash
-k6 run -e BASE_URL=http://<EC2 주소>:8000 -e SUMMARY_JSON=infra/k6/results/run-01.json infra/k6/main.js
-```
-
 | 변수 | 기본값 | 뜻 |
 | --- | --- | --- |
-| `BASE_URL` | `http://localhost:8000` | Gateway 주소 |
+| `BASE_URL` | `http://localhost:8000` | Gateway 주소. 로컬 compose만 대상으로 해요 |
 | `SCENARIOS` | `browse,bookmark,profile` | 돌릴 시나리오. `guide`는 명시할 때만 |
 | `MODE` | `sequential` | `parallel`이면 고른 시나리오를 한꺼번에 |
 | `WARMUP` `STEADY` `PEAK` `COOLDOWN` | `30s` `1m` `30s` `10s` | 단계별 시간 |
