@@ -24,3 +24,9 @@ scrape_configs:
     static_configs:
       - targets: ['discovery:8761']
       - targets: ['config:8888']
+
+  # Kafka는 스스로 지표를 내지 않아 kafka-exporter가 대신 읽어 줘요.
+  # job 이름을 recu-로 시작하지 않아 서비스 상태(up{job=~"recu-.*"})에는 섞이지 않아요.
+  - job_name: kafka-exporter
+    static_configs:
+      - targets: ['kafka-exporter:9308']
